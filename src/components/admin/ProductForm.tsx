@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { UploadCloud, X, Star, Save, ArrowLeft } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { UploadCloud, X, Star, Save, ArrowLeft, Loader2, CheckCircle2, AlertCircle } from "lucide-react";
 import PageHeader from "@/components/admin/PageHeader";
 import { categories, type Product } from "@/lib/mockData";
 import { inputClass, labelClass, cardClass, primaryBtn, secondaryBtn } from "@/components/admin/ui";
@@ -24,22 +25,6 @@ function Field({ label, children, className = "" }: { label: string; children: R
     <div className={className}>
       <label className={labelClass}>{label}</label>
       {children}
-    </div>
-  );
-}
-
-function Price({ defaultValue }: { defaultValue?: number | null }) {
-  return (
-    <div className="relative">
-      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-charcoal/50">₹</span>
-      <input
-        type="number"
-        min="0"
-        step="0.01"
-        defaultValue={defaultValue ?? ""}
-        placeholder="0.00"
-        className={`${inputClass} pl-7`}
-      />
     </div>
   );
 }
@@ -77,12 +62,40 @@ function Toggle({
 }
 
 export default function ProductForm({ mode, initial }: { mode: "add" | "edit"; initial?: Product }) {
+  const router = useRouter();
   const isEdit = mode === "edit";
+
+  // Form Fields
+  const [name, setName] = useState(initial?.name || "");
+  const [slug, setSlug] = useState(initial?.slug || "");
+  const [sku, setSku] = useState(initial?.sku || "");
+  const [shortDescription, setShortDescription] = useState(initial?.shortDescription || "");
+  const [description, setDescription] = useState(initial?.description || "");
+  const [regularPrice, setRegularPrice] = useState(initial?.regularPrice ? String(initial.regularPrice) : "");
+  const [salePrice, setSalePrice] = useState(initial?.salePrice ? String(initial.salePrice) : "");
+  const [costPrice, setCostPrice] = useState(initial?.costPrice ? String(initial.costPrice) : "");
+  const [material, setMaterial] = useState(initial?.material || "");
+  const [jewelleryType, setJewelleryType] = useState(initial?.jewelleryType || "");
+  const [weight, setWeight] = useState(initial?.weight || "");
+  const [size, setSize] = useState(initial?.size || "");
+  const [colour, setColour] = useState(initial?.colour || "");
+  const [occasion, setOccasion] = useState(initial?.occasion || "");
+  const [collection, setCollection] = useState(initial?.collection || "");
+  const [tags, setTags] = useState(initial?.tags || "");
+  const [selectedCategory, setSelectedCategory] = useState(initial?.category || categories[0]?.name || "");
+  const [stock, setStock] = useState(initial?.stock !== undefined ? String(initial.stock) : "10");
+  const [stockStatus, setStockStatus] = useState(initial && initial.stock <= 0 ? "out" : "in");
+
+  // Images & Visibility
   const [images, setImages] = useState<{ url: string; name: string }[]>([]);
   const [primary, setPrimary] = useState(0);
   const [active, setActive] = useState(initial ? initial.status === "active" : true);
   const [featured, setFeatured] = useState(initial?.featured ?? false);
   const [newArrival, setNewArrival] = useState(initial?.newArrival ?? false);
+
+  // Status & Feedback
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   function handleFiles(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? []);
@@ -95,8 +108,75 @@ export default function ProductForm({ mode, initial }: { mode: "add" | "edit"; i
     setPrimary((p) => (i === p ? 0 : i < p ? p - 1 : p));
   }
 
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!name.trim()) {
+      setMessage({ type: "error", text: "Product name is required." });
+      return;
+    }
+    if (!regularPrice || isNaN(Number(regularPrice))) {
+      setMessage({ type: "error", text: "A valid regular price is required." });
+      return;
+    }
+
+    setLoading(true);
+    setMessage(null);
+
+    const payload = {
+      name: name.trim(),
+      slug: slug.trim() || name.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
+      sku: sku.trim(),
+      regularPrice: Number(regularPrice),
+      salePrice: salePrice ? Number(salePrice) : null,
+      costPrice: costPrice ? Number(costPrice) : null,
+      shortDescription,
+      description,
+      stock: Number(stock) || 0,
+      featured,
+      newArrival,
+      active,
+      material,
+      jewelleryType,
+      weight,
+      size,
+      colour,
+      occasion,
+      collection,
+      tags,
+      categories: selectedCategory ? [{ name: selectedCategory }] : [],
+    };
+
+    try {
+      const url = isEdit ? `/api/products/${initial?.id}` : `/api/products`;
+      const res = await fetch(url, {
+        method: isEdit ? "PUT" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || data.success === false) {
+        throw new Error(data.error || "Failed to save product in WooCommerce");
+      }
+
+      setMessage({
+        type: "success",
+        text: isEdit ? "Product updated successfully!" : "Product saved successfully!",
+      });
+
+      setTimeout(() => {
+        router.push("/admin/products");
+      }, 1500);
+    } catch (err: any) {
+      setMessage({ type: "error", text: err.message || "An unexpected error occurred." });
+    } finally {
+      setLoading(false);
+    }
+  }
+
   return (
-    <form onSubmit={(e) => e.preventDefault()} className="space-y-8">
+    <form onSubmit={handleSubmit} className="space-y-8">
       <PageHeader
         eyebrow={isEdit ? "Update Catalogue" : "Catalogue Expansion"}
         title={isEdit ? "Edit Product" : "Add New Product"}
@@ -107,39 +187,116 @@ export default function ProductForm({ mode, initial }: { mode: "add" | "edit"; i
         </Link>
       </PageHeader>
 
+      {message && (
+        <div
+          className={`flex items-center gap-3 rounded-xl p-4 text-sm font-medium ${
+            message.type === "success"
+              ? "border border-emerald-300 bg-emerald-50 text-emerald-800"
+              : "border border-rose-300 bg-rose-50 text-rose-800"
+          }`}
+        >
+          {message.type === "success" ? (
+            <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600" />
+          ) : (
+            <AlertCircle className="h-5 w-5 shrink-0 text-rose-600" />
+          )}
+          <span>{message.text}</span>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         {/* Left column */}
         <div className="space-y-6 lg:col-span-2">
           <Section title="Basic Information">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <Field label="Product Name" className="sm:col-span-2">
-                <input defaultValue={initial?.name} placeholder="e.g. Antique Gold Haaram" className={inputClass} />
+              <Field label="Product Name *" className="sm:col-span-2">
+                <input
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="e.g. Antique Gold Haaram"
+                  required
+                  className={inputClass}
+                />
               </Field>
               <Field label="Slug">
-                <input defaultValue={initial?.slug} placeholder="antique-gold-haaram" className={inputClass} />
+                <input
+                  value={slug}
+                  onChange={(e) => setSlug(e.target.value)}
+                  placeholder="antique-gold-haaram"
+                  className={inputClass}
+                />
               </Field>
               <Field label="SKU">
-                <input defaultValue={initial?.sku} placeholder="CH-HAR-001" className={`${inputClass} font-mono`} />
+                <input
+                  value={sku}
+                  onChange={(e) => setSku(e.target.value)}
+                  placeholder="CH-HAR-001"
+                  className={`${inputClass} font-mono`}
+                />
               </Field>
               <Field label="Short Description" className="sm:col-span-2">
-                <textarea rows={2} defaultValue={initial?.shortDescription} className={inputClass} />
+                <textarea
+                  rows={2}
+                  value={shortDescription}
+                  onChange={(e) => setShortDescription(e.target.value)}
+                  className={inputClass}
+                />
               </Field>
               <Field label="Full Description" className="sm:col-span-2">
-                <textarea rows={6} defaultValue={initial?.description} className={inputClass} />
+                <textarea
+                  rows={6}
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  className={inputClass}
+                />
               </Field>
             </div>
           </Section>
 
           <Section title="Pricing">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-              <Field label="Regular Price">
-                <Price defaultValue={initial?.regularPrice} />
+              <Field label="Regular Price *">
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-charcoal/50">₹</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={regularPrice}
+                    onChange={(e) => setRegularPrice(e.target.value)}
+                    placeholder="0.00"
+                    required
+                    className={`${inputClass} pl-7`}
+                  />
+                </div>
               </Field>
               <Field label="Sale Price">
-                <Price defaultValue={initial?.salePrice} />
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-charcoal/50">₹</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={salePrice}
+                    onChange={(e) => setSalePrice(e.target.value)}
+                    placeholder="0.00"
+                    className={`${inputClass} pl-7`}
+                  />
+                </div>
               </Field>
               <Field label="Cost Price (optional)">
-                <Price defaultValue={initial?.costPrice} />
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-charcoal/50">₹</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={costPrice}
+                    onChange={(e) => setCostPrice(e.target.value)}
+                    placeholder="0.00"
+                    className={`${inputClass} pl-7`}
+                  />
+                </div>
               </Field>
             </div>
           </Section>
@@ -147,10 +304,19 @@ export default function ProductForm({ mode, initial }: { mode: "add" | "edit"; i
           <Section title="Jewellery Information">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Field label="Material">
-                <input defaultValue={initial?.material} placeholder="e.g. Antique gold plated" className={inputClass} />
+                <input
+                  value={material}
+                  onChange={(e) => setMaterial(e.target.value)}
+                  placeholder="e.g. Antique gold plated"
+                  className={inputClass}
+                />
               </Field>
               <Field label="Jewellery Type">
-                <select defaultValue={initial?.jewelleryType ?? ""} className={inputClass}>
+                <select
+                  value={jewelleryType}
+                  onChange={(e) => setJewelleryType(e.target.value)}
+                  className={inputClass}
+                >
                   <option value="">Select type</option>
                   {["Haaram", "Choker", "Necklace", "Earrings", "Bangles", "Full Set"].map((t) => (
                     <option key={t}>{t}</option>
@@ -158,16 +324,35 @@ export default function ProductForm({ mode, initial }: { mode: "add" | "edit"; i
                 </select>
               </Field>
               <Field label="Weight">
-                <input defaultValue={initial?.weight} placeholder="e.g. 85 g" className={inputClass} />
+                <input
+                  value={weight}
+                  onChange={(e) => setWeight(e.target.value)}
+                  placeholder="e.g. 85 g"
+                  className={inputClass}
+                />
               </Field>
               <Field label="Size">
-                <input defaultValue={initial?.size} placeholder="e.g. Free size" className={inputClass} />
+                <input
+                  value={size}
+                  onChange={(e) => setSize(e.target.value)}
+                  placeholder="e.g. Free size"
+                  className={inputClass}
+                />
               </Field>
               <Field label="Colour">
-                <input defaultValue={initial?.colour} placeholder="e.g. Gold" className={inputClass} />
+                <input
+                  value={colour}
+                  onChange={(e) => setColour(e.target.value)}
+                  placeholder="e.g. Gold"
+                  className={inputClass}
+                />
               </Field>
               <Field label="Occasion">
-                <select defaultValue={initial?.occasion ?? ""} className={inputClass}>
+                <select
+                  value={occasion}
+                  onChange={(e) => setOccasion(e.target.value)}
+                  className={inputClass}
+                >
                   <option value="">Select occasion</option>
                   {["Wedding", "Festive", "Party", "Daily wear"].map((o) => (
                     <option key={o}>{o}</option>
@@ -175,7 +360,11 @@ export default function ProductForm({ mode, initial }: { mode: "add" | "edit"; i
                 </select>
               </Field>
               <Field label="Gender / Collection">
-                <select defaultValue={initial?.collection ?? ""} className={inputClass}>
+                <select
+                  value={collection}
+                  onChange={(e) => setCollection(e.target.value)}
+                  className={inputClass}
+                >
                   <option value="">Select collection</option>
                   {["Women", "Bridal", "Kids", "Festive"].map((c) => (
                     <option key={c}>{c}</option>
@@ -183,7 +372,12 @@ export default function ProductForm({ mode, initial }: { mode: "add" | "edit"; i
                 </select>
               </Field>
               <Field label="Tags">
-                <input defaultValue={initial?.tags} placeholder="comma, separated, tags" className={inputClass} />
+                <input
+                  value={tags}
+                  onChange={(e) => setTags(e.target.value)}
+                  placeholder="comma, separated, tags"
+                  className={inputClass}
+                />
               </Field>
             </div>
           </Section>
@@ -236,7 +430,7 @@ export default function ProductForm({ mode, initial }: { mode: "add" | "edit"; i
 
         {/* Right column */}
         <div className="space-y-6">
-          <Section title="Category" hint="Select one or more.">
+          <Section title="Category" hint="Select main category.">
             <div className="space-y-2">
               {categories.map((c) => (
                 <label
@@ -244,8 +438,11 @@ export default function ProductForm({ mode, initial }: { mode: "add" | "edit"; i
                   className="flex cursor-pointer items-center gap-2.5 rounded-lg border border-gold/20 px-3 py-2 text-sm hover:bg-beige/50"
                 >
                   <input
-                    type="checkbox"
-                    defaultChecked={initial?.category === c.name}
+                    type="radio"
+                    name="category"
+                    value={c.name}
+                    checked={selectedCategory === c.name}
+                    onChange={() => setSelectedCategory(c.name)}
                     className="h-4 w-4 accent-maroon"
                   />
                   {c.name}
@@ -257,10 +454,20 @@ export default function ProductForm({ mode, initial }: { mode: "add" | "edit"; i
           <Section title="Inventory">
             <div className="space-y-4">
               <Field label="Stock Quantity">
-                <input type="number" min="0" defaultValue={initial?.stock ?? 0} className={inputClass} />
+                <input
+                  type="number"
+                  min="0"
+                  value={stock}
+                  onChange={(e) => setStock(e.target.value)}
+                  className={inputClass}
+                />
               </Field>
               <Field label="Stock Status">
-                <select defaultValue={initial && initial.stock <= 0 ? "out" : "in"} className={inputClass}>
+                <select
+                  value={stockStatus}
+                  onChange={(e) => setStockStatus(e.target.value)}
+                  className={inputClass}
+                >
                   <option value="in">In stock</option>
                   <option value="out">Out of stock</option>
                 </select>
@@ -277,9 +484,22 @@ export default function ProductForm({ mode, initial }: { mode: "add" | "edit"; i
           </Section>
 
           <div className="flex gap-3">
-            <button type="submit" className={`${primaryBtn} flex-1 py-3`}>
-              <Save className="h-3.5 w-3.5" />
-              Save Product
+            <button
+              type="submit"
+              disabled={loading}
+              className={`${primaryBtn} flex-1 py-3 disabled:opacity-50`}
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Save className="h-3.5 w-3.5" />
+                  Save Product
+                </>
+              )}
             </button>
             <Link href="/admin/products" className={`${secondaryBtn} py-3`}>
               Cancel

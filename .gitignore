@@ -29,3 +29,6 @@ next-env.d.ts
 # temp data dumps
 products*.json
 raw_products.json
+
+.vercel
+.env*

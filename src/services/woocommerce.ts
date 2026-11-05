@@ -19,7 +19,7 @@ export class WooCommerceService {
   private static consumerSecret = process.env.WOOCOMMERCE_CONSUMER_SECRET || '';
 
   // Internal helper for fetching from Woo API securely
-  private static async fetchWooAPI(endpoint: string) {
+  private static async fetchWooAPI(endpoint: string, options: RequestInit = {}) {
     // Only fetch if keys are available
     if (!this.baseUrl || !this.consumerKey || !this.consumerSecret) return null;
     
@@ -28,14 +28,20 @@ export class WooCommerceService {
       const url = `${this.baseUrl.replace(/\/$/, '')}/wp-json/wc/v3/${endpoint}`;
       
       const response = await fetch(url, {
+        ...options,
         headers: {
           'Authorization': `Basic ${auth}`,
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          ...options.headers,
         },
         cache: 'no-store'
       });
       
-      if (!response.ok) return null;
+      if (!response.ok) {
+        const errText = await response.text();
+        console.error(`WooCommerce API Error [${response.status}] for ${endpoint}:`, errText);
+        return null;
+      }
       return await response.json();
     } catch (e) {
       console.error('WooCommerce Fetch Error:', e);
@@ -523,5 +529,88 @@ export class WooCommerceService {
       return { valid: false, message: `Minimum spend of ₹${coupon.minSpend} required for code ${coupon.code}.` };
     }
     return { valid: true, coupon, message: `Coupon ${coupon.code} applied successfully!` };
+  }
+
+  // Create Product in WooCommerce
+  static async createProduct(data: {
+    name: string;
+    regularPrice: number | string;
+    salePrice?: number | string | null;
+    description?: string;
+    shortDescription?: string;
+    sku?: string;
+    categories?: { id?: number; name?: string }[];
+    images?: { src: string }[];
+    stock?: number;
+    featured?: boolean;
+    attributes?: { name: string; options: string[] }[];
+  }): Promise<Product | null> {
+    const payload: any = {
+      name: data.name,
+      type: 'simple',
+      regular_price: data.regularPrice ? String(data.regularPrice) : '',
+      sale_price: data.salePrice ? String(data.salePrice) : '',
+      description: data.description || '',
+      short_description: data.shortDescription || '',
+      sku: data.sku || '',
+      featured: !!data.featured,
+    };
+
+    if (data.stock !== undefined && data.stock !== null) {
+      payload.manage_stock = true;
+      payload.stock_quantity = Number(data.stock);
+    }
+
+    if (data.categories && data.categories.length > 0) {
+      payload.categories = data.categories;
+    }
+    if (data.images && data.images.length > 0) {
+      payload.images = data.images;
+    }
+    if (data.attributes && data.attributes.length > 0) {
+      payload.attributes = data.attributes;
+    }
+
+    const created = await this.fetchWooAPI('products', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+
+    if (!created || !created.id) return null;
+    return this.mapWooProduct(created);
+  }
+
+  // Update Product in WooCommerce
+  static async updateProduct(id: number | string, data: any): Promise<Product | null> {
+    const payload: any = {};
+    if (data.name !== undefined) payload.name = data.name;
+    if (data.regularPrice !== undefined) payload.regular_price = String(data.regularPrice);
+    if (data.salePrice !== undefined) payload.sale_price = data.salePrice ? String(data.salePrice) : '';
+    if (data.description !== undefined) payload.description = data.description;
+    if (data.shortDescription !== undefined) payload.short_description = data.shortDescription;
+    if (data.sku !== undefined) payload.sku = data.sku;
+    if (data.stock !== undefined && data.stock !== null) {
+      payload.manage_stock = true;
+      payload.stock_quantity = Number(data.stock);
+    }
+    if (data.featured !== undefined) payload.featured = !!data.featured;
+    if (data.categories) payload.categories = data.categories;
+    if (data.images) payload.images = data.images;
+
+    const updated = await this.fetchWooAPI(`products/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
+
+    if (!updated || !updated.id) return null;
+    return this.mapWooProduct(updated);
+  }
+
+  // Delete Product in WooCommerce
+  static async deleteProduct(id: number | string, force = true): Promise<boolean> {
+    const res = await this.fetchWooAPI(`products/${id}?force=${force}`, {
+      method: 'DELETE',
+    });
+    return !!(res && res.id);
   }
 }
