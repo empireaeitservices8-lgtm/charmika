@@ -157,7 +157,7 @@ export default function ProductForm({ mode, initial }: { mode: "add" | "edit"; i
       const data = await res.json();
 
       if (!res.ok || data.success === false) {
-        throw new Error(data.error || "Failed to save product in WooCommerce");
+        throw new Error(data.error || "Failed to save product");
       }
 
       setMessage({

@@ -12,7 +12,7 @@ export async function PUT(
 
     if (!updated) {
       return NextResponse.json(
-        { success: false, error: 'Failed to update product in WooCommerce.' },
+        { success: false, error: 'Failed to update product.' },
         { status: 400 }
       );
     }
@@ -33,7 +33,7 @@ export async function DELETE(
 
     if (!deleted) {
       return NextResponse.json(
-        { success: false, error: 'Failed to delete product in WooCommerce.' },
+        { success: false, error: 'Failed to delete product.' },
         { status: 400 }
       );
     }
@@ -43,3 +43,4 @@ export async function DELETE(
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }
+
