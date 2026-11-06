@@ -382,7 +382,7 @@ export default function CheckoutPage() {
               disabled={submitting}
               className="w-full py-4 bg-maroon text-white font-bold text-xs uppercase tracking-widest rounded-full hover:bg-gold hover:text-maroon transition-all flex items-center justify-center gap-2 shadow-luxury disabled:opacity-50"
             >
-              {submitting ? 'Processing Payment...' : 'Pay Now with PayU'}
+              {submitting ? 'Processing Payment...' : 'Pay Now'}
               <Lock className="w-4 h-4 text-gold" />
             </button>
           </div>
