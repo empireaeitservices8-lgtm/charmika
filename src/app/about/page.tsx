@@ -113,14 +113,6 @@ export default function AboutPage() {
 
         {/* Founder Section */}
         <div className="bg-gradient-to-r from-maroon-950 via-maroon-900 to-maroon-950 text-white rounded-3xl p-8 sm:p-14 border border-gold/40 shadow-luxury flex flex-col md:flex-row items-center gap-10 mb-16">
-          <div className="w-48 h-48 rounded-full overflow-hidden border-4 border-gold shadow-gold shrink-0 bg-white/10 flex items-center justify-center">
-            <img
-              src="https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?q=80&w=600&auto=format&fit=crop"
-              alt="Lekshmi D.S"
-              className="w-full h-full object-cover"
-            />
-          </div>
-
           <div className="space-y-4 text-center md:text-left">
             <span className="text-xs font-semibold uppercase tracking-widest text-gold block">
               Meet The Visionary
