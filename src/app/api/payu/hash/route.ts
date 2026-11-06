@@ -11,7 +11,7 @@ export async function POST(request: Request) {
     const email = String(body.email || '').trim();
 
     const key = (process.env.NEXT_PUBLIC_PAYU_KEY || 'F6f1BF').trim();
-    const salt = (process.env.PAYU_SALT || 'qoK3DHXVDYBPkmCHLYEYEBT6TfdQTBeq').trim();
+    const salt = (process.env.PAYU_SALT || 'Af2PwLZr4fhMi2IIBeIcLn3APqeDA9ma').trim();
     const payuEnv = (process.env.PAYU_ENV || 'live').trim().toLowerCase();
     const isTest = payuEnv === 'test';
 
