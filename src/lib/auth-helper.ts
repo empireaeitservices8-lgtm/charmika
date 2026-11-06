@@ -15,7 +15,6 @@ export function setAdminAuthCookie(response: NextResponse, token: string) {
     httpOnly: true,
     secure: isProduction,
     sameSite: "lax",
-    maxAge: 7 * 24 * 60 * 60,
     path: "/",
   });
 }

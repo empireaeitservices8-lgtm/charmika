@@ -18,6 +18,13 @@ export default function AdminLoginPage() {
   useEffect(() => {
     setEmail("");
     setPassword("");
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("charmika_token");
+      localStorage.removeItem("token");
+      localStorage.removeItem("charmika_admin_token");
+      sessionStorage.removeItem("charmika_token");
+      fetch("/api/admin/auth/logout", { method: "POST" }).catch(() => {});
+    }
   }, []);
 
   async function handleSubmit(e: React.FormEvent) {
