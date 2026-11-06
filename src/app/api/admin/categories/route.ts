@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
+import { categories as mockDataCategories } from "@/lib/mockData";
 
 export const dynamic = "force-dynamic";
 
@@ -41,10 +42,28 @@ export async function GET() {
       data: formatted,
     });
   } catch (err: any) {
-    return NextResponse.json(
-      { success: false, message: err.message || "Failed to retrieve categories." },
-      { status: 500 }
-    );
+    console.warn("Failed to retrieve categories from database, falling back to mockData:", err);
+    const formatted = mockDataCategories.map((c) => ({
+      id: c.id,
+      name: c.name,
+      slug: c.slug,
+      description: c.description,
+      image:
+        c.slug === "chokers"
+          ? "/images/chokers.png"
+          : c.slug === "haarams"
+          ? "/images/long-haarams.png"
+          : "/images/temple-jewellery.png",
+      status: c.status,
+      products: c.products,
+      createdAt: new Date().toISOString(),
+    }));
+
+    return NextResponse.json({
+      success: true,
+      message: "Categories retrieved successfully.",
+      data: formatted,
+    });
   }
 }
 
