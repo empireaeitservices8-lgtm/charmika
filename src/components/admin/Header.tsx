@@ -49,9 +49,8 @@ export default function Header({ onMenuClick }: { onMenuClick: () => void }) {
       .getMe()
       .then(setAdmin)
       .catch(() => {
-        // Not authenticated, redirect to login if not already on login
         if (pathname !== "/login" && pathname !== "/admin/login") {
-          router.push("/login");
+          router.push("/admin/login");
         }
       });
   }, [pathname, router]);
@@ -62,7 +61,10 @@ export default function Header({ onMenuClick }: { onMenuClick: () => void }) {
     } catch (err) {
       console.error("Logout error:", err);
     } finally {
-      router.push("/login");
+      if (typeof window !== "undefined") {
+        localStorage.removeItem("charmika_token");
+      }
+      router.push("/admin/login");
     }
   }
 

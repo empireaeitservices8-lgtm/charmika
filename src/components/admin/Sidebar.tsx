@@ -49,7 +49,10 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
     } catch (err) {
       console.error("Logout error:", err);
     } finally {
-      router.push("/login");
+      if (typeof window !== "undefined") {
+        localStorage.removeItem("charmika_token");
+      }
+      router.push("/admin/login");
     }
   }
 

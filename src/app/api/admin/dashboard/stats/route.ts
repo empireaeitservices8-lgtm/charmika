@@ -61,6 +61,10 @@ export async function GET() {
     // Database not yet reachable for orders/customers
   }
 
+  const activePublic = products.filter((p) => p.status === 'active').length;
+  const inactive = products.filter((p) => p.status !== 'active').length;
+  const outOfStock = products.filter((p) => p.stock <= 0).length;
+
   const lowStockProducts = products
     .filter((p) => p.stock <= 5)
     .slice(0, 6)
@@ -89,6 +93,9 @@ export async function GET() {
     message: 'Dashboard stats retrieved successfully',
     data: {
       totalProducts: products.length,
+      activePublic,
+      inactive,
+      outOfStock,
       totalOrders,
       totalCustomers,
       totalCategories: categories.length,
