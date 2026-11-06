@@ -3,16 +3,23 @@ import { NextResponse } from 'next/server';
 
 export async function POST(request: Request) {
   try {
-    const { txnid, amount, productinfo, firstname, email } = await request.json();
+    const body = await request.json();
+    const txnid = String(body.txnid || '').trim();
+    const amount = Number(body.amount || 0).toFixed(2);
+    const productinfo = String(body.productinfo || 'Charmika Jewellery').trim();
+    const firstname = String(body.firstname || 'Customer').trim();
+    const email = String(body.email || '').trim();
 
-    // Always use live credentials for correct hash generation.
-    // The PAYU_ENV variable only controls which payment URL (test/live) is used on the frontend.
-    const key = process.env.NEXT_PUBLIC_PAYU_KEY || '';
-    const salt = process.env.PAYU_SALT || '';
-    const isTest = process.env.PAYU_ENV !== 'live';
+    const key = (process.env.NEXT_PUBLIC_PAYU_KEY || 'F6f1BF').trim();
+    const salt = (process.env.PAYU_SALT || 'qoK3DHXVDYBPkmCHLYEYEBT6TfdQTBeq').trim();
+    const payuEnv = (process.env.PAYU_ENV || 'live').trim().toLowerCase();
+    const isTest = payuEnv === 'test';
 
     if (!key || !salt) {
-      return NextResponse.json({ success: false, error: 'PayU credentials not configured.' }, { status: 500 });
+      return NextResponse.json(
+        { success: false, error: 'PayU credentials not configured.' },
+        { status: 500 }
+      );
     }
 
     // Official PayU hash formula:
@@ -20,8 +27,21 @@ export async function POST(request: Request) {
     const hashString = `${key}|${txnid}|${amount}|${productinfo}|${firstname}|${email}|||||||||||${salt}`;
     const hash = crypto.createHash('sha512').update(hashString).digest('hex');
 
-    return NextResponse.json({ success: true, hash, key, isTest });
-  } catch (error) {
-    return NextResponse.json({ success: false, error: 'Failed to generate PayU hash' }, { status: 500 });
+    return NextResponse.json({
+      success: true,
+      hash,
+      key,
+      isTest,
+      txnid,
+      amount,
+      productinfo,
+      firstname,
+      email,
+    });
+  } catch {
+    return NextResponse.json(
+      { success: false, error: 'Failed to generate PayU hash' },
+      { status: 500 }
+    );
   }
 }

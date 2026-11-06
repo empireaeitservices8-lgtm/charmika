@@ -2,10 +2,11 @@ import { NextResponse } from 'next/server';
 import { updateUnifiedOrderStatus } from '@/lib/store-products';
 
 export async function POST(request: Request) {
-  const baseUrl =
-    request.headers.get('origin') ||
-    process.env.NEXT_PUBLIC_SITE_URL ||
-    'https://www.charmikabylekshmi.com';
+  const baseUrl = (
+    process.env.NEXT_PUBLIC_SITE_URL?.trim() ||
+    new URL(request.url).origin ||
+    'https://www.charmikabylekshmi.com'
+  ).replace(/\/$/, '');
 
   try {
     const formData = await request.formData();

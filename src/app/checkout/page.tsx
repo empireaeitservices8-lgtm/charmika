@@ -92,8 +92,11 @@ export default function CheckoutPage() {
       // Step 2: Initialize PayU Payment with Order ID
       if (paymentMethod === 'payu') {
         const txnid = `CBL-ORD-${orderId}-${Date.now()}`;
-        const amount = totalAmount.toString();
-        const productinfo = `Charmika Jewellery Order #${orderNumber}`;
+        const amount = Number(totalAmount).toFixed(2);
+        const productinfo = `Charmika Jewellery Order ${orderId}`;
+        const cleanFirstName = formData.firstName.trim();
+        const cleanEmail = formData.email.trim();
+        const cleanPhone = formData.phone.trim();
 
         const hashRes = await fetch('/api/payu/hash', {
           method: 'POST',
@@ -102,8 +105,8 @@ export default function CheckoutPage() {
             txnid,
             amount,
             productinfo,
-            firstname: formData.firstName,
-            email: formData.email,
+            firstname: cleanFirstName,
+            email: cleanEmail,
           }),
         });
         const hashData = await hashRes.json();
@@ -124,12 +127,12 @@ export default function CheckoutPage() {
           };
 
           appendInput('key', hashData.key);
-          appendInput('txnid', txnid);
-          appendInput('amount', amount);
-          appendInput('productinfo', productinfo);
-          appendInput('firstname', formData.firstName);
-          appendInput('email', formData.email);
-          appendInput('phone', formData.phone);
+          appendInput('txnid', hashData.txnid || txnid);
+          appendInput('amount', hashData.amount || amount);
+          appendInput('productinfo', hashData.productinfo || productinfo);
+          appendInput('firstname', hashData.firstname || cleanFirstName);
+          appendInput('email', hashData.email || cleanEmail);
+          appendInput('phone', cleanPhone);
           appendInput('surl', `${window.location.origin}/api/payu/success`);
           appendInput('furl', `${window.location.origin}/api/payu/success`);
           appendInput('hash', hashData.hash);
