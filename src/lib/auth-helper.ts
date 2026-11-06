@@ -32,14 +32,6 @@ export function clearAdminAuthCookie(response: NextResponse) {
 }
 
 export async function verifyAdminSession(req: NextRequest) {
-  const fallbackAdmin = {
-    id: 1,
-    name: "Charmika Admin",
-    email: "admin@charmika.com",
-    role: "ADMIN",
-    isActive: true,
-  };
-
   try {
     let token = req.cookies.get("charmika_token")?.value;
 
@@ -49,12 +41,12 @@ export async function verifyAdminSession(req: NextRequest) {
     }
 
     if (!token) {
-      return fallbackAdmin;
+      return null;
     }
 
     const decoded = jwt.verify(token, JWT_SECRET) as any;
     if (!decoded || !decoded.id) {
-      return fallbackAdmin;
+      return null;
     }
 
     try {
@@ -73,17 +65,17 @@ export async function verifyAdminSession(req: NextRequest) {
         return admin;
       }
     } catch {
-      // Database not reachable; use decoded JWT payload
+      // Database not reachable; use verified JWT payload
     }
 
     return {
       id: decoded.id || 1,
-      name: decoded.name || "Charmika Admin",
+      name: decoded.name || "Admin",
       email: decoded.email || "admin@charmika.com",
       role: decoded.role || "ADMIN",
       isActive: true,
     };
   } catch {
-    return fallbackAdmin;
+    return null;
   }
 }

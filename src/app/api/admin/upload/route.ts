@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { writeFile, mkdir } from 'fs/promises';
 import path from 'path';
+import { uploadImageBlobToCloud } from '@/lib/cloud-store';
 
 export async function POST(request: Request) {
   try {
@@ -24,6 +25,14 @@ export async function POST(request: Request) {
       const buffer = Buffer.from(bytes);
       const mimeType = file.type || 'image/jpeg';
 
+      // 1. Upload to persistent cloud blob store (works across all Vercel serverless functions)
+      const cloudUrl = await uploadImageBlobToCloud(buffer, mimeType);
+      if (cloudUrl) {
+        uploadedUrls.push(cloudUrl);
+        continue;
+      }
+
+      // 2. Fallback to local disk / Base64 data URL
       try {
         const uploadDir = path.join(process.cwd(), 'public', 'uploads');
         await mkdir(uploadDir, { recursive: true });
@@ -33,7 +42,6 @@ export async function POST(request: Request) {
         await writeFile(filepath, buffer);
         uploadedUrls.push(`/uploads/${filename}`);
       } catch {
-        // On serverless read-only filesystems (e.g. Vercel), return a Base64 data URL so the image works immediately
         const base64Data = `data:${mimeType};base64,${buffer.toString('base64')}`;
         uploadedUrls.push(base64Data);
       }

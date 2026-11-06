@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Eye, EyeOff, Lock, Mail, Loader2, AlertCircle, ArrowLeft } from "lucide-react";
@@ -14,6 +14,11 @@ export default function AdminLoginPage() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setEmail("");
+    setPassword("");
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -50,7 +55,7 @@ export default function AdminLoginPage() {
         </div>
 
         {/* Form Body */}
-        <form onSubmit={handleSubmit} className="space-y-5 p-8">
+        <form onSubmit={handleSubmit} autoComplete="off" className="space-y-5 p-8">
           <div>
             <h2 className="font-serif text-xl font-bold text-maroon">Sign In</h2>
             <p className="mt-1 text-xs text-charcoal/60">
@@ -71,9 +76,10 @@ export default function AdminLoginPage() {
               <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-charcoal/40" />
               <input
                 type="email"
+                name="charmika_admin_email"
+                autoComplete="off"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="admin@charmika.com"
                 required
                 className={`${inputClass} pl-10`}
               />
@@ -88,9 +94,10 @@ export default function AdminLoginPage() {
               <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-charcoal/40" />
               <input
                 type={show ? "text" : "password"}
+                name="charmika_admin_password"
+                autoComplete="new-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
                 required
                 className={`${inputClass} pl-10 pr-10`}
               />

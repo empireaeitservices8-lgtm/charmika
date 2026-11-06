@@ -1,16 +1,45 @@
 "use client";
 
-import { Suspense, useState } from "react";
-import { usePathname } from "next/navigation";
+import { Suspense, useState, useEffect } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import Sidebar from "@/components/admin/Sidebar";
 import Header from "@/components/admin/Header";
+import { authService } from "@/lib/services/auth.service";
 
 function PanelContent({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [authChecked, setAuthChecked] = useState(false);
 
-  if (pathname === "/admin/login" || pathname === "/login") {
+  const isLoginPage = pathname === "/admin/login" || pathname === "/login";
+
+  useEffect(() => {
+    if (isLoginPage) {
+      setAuthChecked(true);
+      return;
+    }
+
+    authService
+      .getMe()
+      .then(() => {
+        setAuthChecked(true);
+      })
+      .catch(() => {
+        router.replace("/admin/login");
+      });
+  }, [isLoginPage, pathname, router]);
+
+  if (isLoginPage) {
     return <>{children}</>;
+  }
+
+  if (!authChecked) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-beige text-xs font-semibold text-maroon">
+        Verifying administrator session...
+      </div>
+    );
   }
 
   return (

@@ -6,192 +6,149 @@ import {
   type Product as AdminCatalogProduct,
   type CategoryItem as AdminCatalogCategory,
 } from '@/lib/mockData';
+import { readCloudDelta, writeCloudDelta } from '@/lib/cloud-store';
 
 const DEFAULT_WP_PRODUCT_IMG =
   'https://paleturquoise-weasel-278625.hostingersite.com/wp-content/uploads/2026/10/file_0000000080f081f491e6f783dc620708.png';
 const DEFAULT_WP_CATEGORY_IMG =
   'https://paleturquoise-weasel-278625.hostingersite.com/wp-content/uploads/2026/10/file_00000000aeb88230a6116622d5b66a95.png';
 
-type RuntimeCatalogState = {
-  productsMap: Map<number, AdminCatalogProduct>;
-  categoriesMap: Map<number, AdminCatalogCategory>;
-  deletedProductIds: Set<number>;
-  deletedCategoryIds: Set<number>;
-  nextProductId: number;
-  nextCategoryId: number;
+export type UnifiedOrderItem = {
+  id: number;
+  productId: number;
+  productName: string;
+  sku: string;
+  variant: string;
+  jewelleryType: string;
+  productImage: string | null;
+  quantity: number;
+  unitPrice: number;
+  subtotal: number;
+  currentStock: number | null;
 };
 
-const globalForCatalog = globalThis as unknown as {
-  __charmikaCatalog?: RuntimeCatalogState;
+export type UnifiedOrder = {
+  id: number;
+  orderNumber: string;
+  customerId: number;
+  customerName: string;
+  customerEmail: string;
+  customerPhone: string;
+  customerStatus: string;
+  subtotal: number;
+  deliveryCharge: number;
+  tax: number;
+  discount: number;
+  totalAmount: number;
+  paymentMethod: string;
+  paymentStatus: string;
+  orderStatus: string;
+  stockDeducted: boolean;
+  shippingAddress: string;
+  billingAddress: string;
+  customerNotes: string;
+  couponCode: string | null;
+  transactionId: string | null;
+  itemsCount: number;
+  items: UnifiedOrderItem[];
+  statusHistory: {
+    id: number;
+    prevStatus: string | null;
+    newStatus: string;
+    comment: string;
+    updatedBy: string;
+    date: string;
+  }[];
+  createdAt: string;
+  formattedDate: string;
+  updatedAt: string;
+  formattedUpdatedAt: string;
 };
 
-function getRuntimeCatalog(): RuntimeCatalogState {
-  if (!globalForCatalog.__charmikaCatalog) {
-    const productsMap = new Map<number, AdminCatalogProduct>();
-    let maxProdId = 1000;
-    for (const p of wpProducts) {
-      productsMap.set(p.id, { ...p });
-      if (p.id > maxProdId) maxProdId = p.id;
-    }
-
-    const categoriesMap = new Map<number, AdminCatalogCategory>();
-    let maxCatId = 100;
-    for (const c of wpCategories) {
-      categoriesMap.set(c.id, { ...c });
-      if (c.id > maxCatId) maxCatId = c.id;
-    }
-
-    globalForCatalog.__charmikaCatalog = {
-      productsMap,
-      categoriesMap,
-      deletedProductIds: new Set<number>(),
-      deletedCategoryIds: new Set<number>(),
-      nextProductId: maxProdId + 1,
-      nextCategoryId: maxCatId + 1,
-    };
-  }
-  return globalForCatalog.__charmikaCatalog;
-}
-
-function mapDbProductToAdminCatalog(p: any): AdminCatalogProduct {
-  const regularPrice = Number(p.regularPrice) || 0;
-  const salePrice = p.salePrice ? Number(p.salePrice) : null;
-  const images =
-    Array.isArray(p.images) && p.images.length > 0
-      ? p.images.map((img: any, idx: number) => ({
-          id: img.id || idx + 1,
-          url: img.imageUrl || img.url || DEFAULT_WP_PRODUCT_IMG,
-          isPrimary: Boolean(img.isPrimary ?? idx === 0),
-          displayOrder: img.displayOrder ?? idx,
-        }))
-      : [
-          {
-            id: 1,
-            url: DEFAULT_WP_PRODUCT_IMG,
-            isPrimary: true,
-            displayOrder: 0,
-          },
-        ];
-
-  const primaryImg = images.find((i: any) => i.isPrimary)?.url || images[0]?.url || DEFAULT_WP_PRODUCT_IMG;
-  const catName = p.category?.name || 'Necklace';
-  const catSlug = p.category?.slug || catName.toLowerCase().replace(/[^a-z0-9]+/g, '-');
-  const catId = p.categoryId || p.category?.id || 16;
-
-  return {
-    id: p.id,
-    name: p.name,
-    slug: p.slug,
-    sku: p.sku || `CH-${p.id}`,
-    category: catName,
-    categoryId: catId,
-    categorySlug: catSlug,
-    categories: [{ id: catId, name: catName, slug: catSlug }],
-    regularPrice,
-    salePrice,
-    costPrice: p.costPrice ? Number(p.costPrice) : undefined,
-    stock: Number(p.stock ?? 0),
-    status: p.status === 'INACTIVE' || p.status === 'inactive' ? 'inactive' : 'active',
-    featured: Boolean(p.featured),
-    newArrival: Boolean(p.newArrival ?? true),
-    isCombo: /\b(set|combo)\b/i.test(p.name) || catSlug.includes('combo'),
-    added: p.createdAt
-      ? new Date(p.createdAt).toLocaleDateString('en-GB', {
-          day: '2-digit',
-          month: 'short',
-          year: 'numeric',
-        })
-      : '06 Nov 2026',
-    shortDescription: p.shortDescription || p.description || `${p.name} — Handcrafted luxury design by Charmika By Lekshmi.`,
-    description: p.description || p.shortDescription || `${p.name} — Handcrafted luxury design by Charmika By Lekshmi.`,
-    material: p.material || 'Premium Gold Plated Brass',
-    jewelleryType: p.jewelleryType || 'Gold Plated',
-    weight: p.weight || undefined,
-    size: p.size || undefined,
-    colour: p.colour || undefined,
-    occasion: p.occasion || 'Festive & Bridal',
-    collection: p.collection || undefined,
-    tags: p.tags || undefined,
-    primaryImage: primaryImg,
-    images,
-  };
+function formatDateTime(d: Date | string) {
+  return new Intl.DateTimeFormat('en-GB', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(d));
 }
 
 export async function getUnifiedAdminCategories(): Promise<AdminCatalogCategory[]> {
-  const state = getRuntimeCatalog();
+  const delta = await readCloudDelta();
+  const deletedCatSet = new Set(delta.deletedCategoryIds || []);
+  const deletedProdSet = new Set(delta.deletedProductIds || []);
 
-  try {
-    const dbCategories = await prisma.category.findMany({
-      include: { _count: { select: { products: true } } },
-      orderBy: { createdAt: 'desc' },
-    });
-
-    for (const c of dbCategories) {
-      if (state.deletedCategoryIds.has(c.id)) continue;
-      state.categoriesMap.set(c.id, {
-        id: c.id,
-        name: c.name,
-        slug: c.slug,
-        description: c.description || `Handcrafted ${c.name} collection from Charmika By Lekshmi`,
-        image: c.image || state.categoriesMap.get(c.id)?.image || DEFAULT_WP_CATEGORY_IMG,
-        status: c.status === 'INACTIVE' ? 'inactive' : 'active',
-        products: c._count?.products || state.categoriesMap.get(c.id)?.products || 0,
-      });
+  const categoriesMap = new Map<number, AdminCatalogCategory>();
+  for (const c of wpCategories) {
+    if (!deletedCatSet.has(c.id)) {
+      categoriesMap.set(c.id, { ...c });
     }
-  } catch {
-    // Database not reachable; use runtime catalog initialized from real WordPress categories
   }
 
-  const allProducts = Array.from(state.productsMap.values()).filter(
-    (p) => !state.deletedProductIds.has(p.id)
-  );
+  for (const [idStr, cat] of Object.entries(delta.upsertedCategories || {})) {
+    const id = Number(idStr);
+    if (!deletedCatSet.has(id) && cat) {
+      categoriesMap.set(id, cat as AdminCatalogCategory);
+    }
+  }
 
-  return Array.from(state.categoriesMap.values())
-    .filter((c) => !state.deletedCategoryIds.has(c.id))
-    .map((c) => {
-      const count = allProducts.filter(
-        (p) =>
-          p.categoryId === c.id ||
-          p.category.toLowerCase() === c.name.toLowerCase() ||
-          p.categorySlug?.toLowerCase() === c.slug.toLowerCase() ||
-          p.categories?.some(
-            (cat) => cat.id === c.id || cat.slug.toLowerCase() === c.slug.toLowerCase()
-          )
-      ).length;
-      return {
-        ...c,
-        products: count > 0 ? count : c.products,
-      };
-    });
+  const productsMap = new Map<number, AdminCatalogProduct>();
+  for (const p of wpProducts) {
+    if (!deletedProdSet.has(p.id)) {
+      productsMap.set(p.id, p);
+    }
+  }
+  for (const [idStr, prod] of Object.entries(delta.upsertedProducts || {})) {
+    const id = Number(idStr);
+    if (!deletedProdSet.has(id) && prod) {
+      productsMap.set(id, prod as AdminCatalogProduct);
+    }
+  }
+
+  const allProducts = Array.from(productsMap.values());
+
+  return Array.from(categoriesMap.values()).map((c) => {
+    const count = allProducts.filter(
+      (p) =>
+        p.categoryId === c.id ||
+        p.category.toLowerCase() === c.name.toLowerCase() ||
+        p.categorySlug?.toLowerCase() === c.slug.toLowerCase() ||
+        p.categories?.some(
+          (cat) => cat.id === c.id || cat.slug.toLowerCase() === c.slug.toLowerCase()
+        )
+    ).length;
+    return {
+      ...c,
+      products: count,
+    };
+  });
 }
 
 export async function getUnifiedAdminProducts(): Promise<AdminCatalogProduct[]> {
-  const state = getRuntimeCatalog();
+  const delta = await readCloudDelta();
+  const deletedSet = new Set(delta.deletedProductIds || []);
 
-  try {
-    const dbProducts = await prisma.product.findMany({
-      include: {
-        category: true,
-        images: { orderBy: { displayOrder: 'asc' } },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
-
-    for (const dbProd of dbProducts) {
-      if (state.deletedProductIds.has(dbProd.id)) continue;
-      state.productsMap.set(dbProd.id, mapDbProductToAdminCatalog(dbProd));
+  const productsMap = new Map<number, AdminCatalogProduct>();
+  for (const p of wpProducts) {
+    if (!deletedSet.has(p.id)) {
+      productsMap.set(p.id, { ...p });
     }
-  } catch {
-    // Database not reachable; use runtime catalog initialized from real WordPress products
   }
 
-  return Array.from(state.productsMap.values())
-    .filter((p) => !state.deletedProductIds.has(p.id))
-    .sort((a, b) => b.id - a.id);
+  for (const [idStr, prod] of Object.entries(delta.upsertedProducts || {})) {
+    const id = Number(idStr);
+    if (!deletedSet.has(id) && prod) {
+      productsMap.set(id, prod as AdminCatalogProduct);
+    }
+  }
+
+  return Array.from(productsMap.values()).sort((a, b) => b.id - a.id);
 }
 
 export async function createUnifiedProduct(body: any): Promise<AdminCatalogProduct> {
-  const state = getRuntimeCatalog();
+  const delta = await readCloudDelta();
   const slug =
     body.slug ||
     body.name
@@ -230,63 +187,8 @@ export async function createUnifiedProduct(body: any): Promise<AdminCatalogProdu
     formattedImages[0]?.url ||
     DEFAULT_WP_PRODUCT_IMG;
 
-  let createdId = state.nextProductId++;
-
-  try {
-    let dbCat = await prisma.category.findFirst({
-      where: {
-        OR: [{ id: matchedCat.id }, { slug: matchedCat.slug }, { name: matchedCat.name }],
-      },
-    });
-    if (!dbCat) {
-      dbCat = await prisma.category.create({
-        data: {
-          name: matchedCat.name,
-          slug: matchedCat.slug,
-          description: matchedCat.description,
-          image: matchedCat.image,
-          status: 'ACTIVE',
-        },
-      });
-    }
-
-    const dbCreated = await prisma.product.create({
-      data: {
-        name: body.name,
-        slug: `${slug}-${Date.now().toString().slice(-4)}`,
-        sku,
-        categoryId: dbCat.id,
-        regularPrice: Number(body.regularPrice),
-        salePrice: body.salePrice ? Number(body.salePrice) : null,
-        costPrice: body.costPrice ? Number(body.costPrice) : null,
-        stock: Number(body.stock ?? 1),
-        status: body.status === 'inactive' ? 'INACTIVE' : 'ACTIVE',
-        featured: Boolean(body.featured ?? true),
-        newArrival: Boolean(body.newArrival ?? true),
-        shortDescription: body.shortDescription || body.description || null,
-        description: body.description || null,
-        material: body.material || null,
-        jewelleryType: body.jewelleryType || null,
-        weight: body.weight || null,
-        size: body.size || null,
-        colour: body.colour || null,
-        occasion: body.occasion || null,
-        collection: body.collection || null,
-        tags: body.tags || null,
-        images: {
-          create: formattedImages.map((img: any, idx: number) => ({
-            imageUrl: img.url,
-            isPrimary: Boolean(img.isPrimary ?? idx === 0),
-            displayOrder: img.displayOrder ?? idx,
-          })),
-        },
-      },
-      include: { category: true, images: true },
-    });
-    createdId = dbCreated.id;
-  } catch {
-    // Fallback to runtime state when DB is read-only or unavailable
-  }
+  const createdId = delta.nextProductId || 2000;
+  delta.nextProductId = createdId + 1;
 
   const newProduct: AdminCatalogProduct = {
     id: createdId,
@@ -330,8 +232,38 @@ export async function createUnifiedProduct(body: any): Promise<AdminCatalogProdu
     images: formattedImages,
   };
 
-  state.deletedProductIds.delete(createdId);
-  state.productsMap.set(createdId, newProduct);
+  delta.deletedProductIds = (delta.deletedProductIds || []).filter((id) => id !== createdId);
+  delta.upsertedProducts = {
+    ...(delta.upsertedProducts || {}),
+    [createdId]: newProduct,
+  };
+
+  await writeCloudDelta(delta);
+
+  try {
+    await prisma.product.create({
+      data: {
+        name: newProduct.name,
+        slug: `${newProduct.slug}-${createdId}`,
+        sku: newProduct.sku,
+        categoryId: matchedCat.id,
+        regularPrice: newProduct.regularPrice,
+        salePrice: newProduct.salePrice,
+        stock: newProduct.stock,
+        status: newProduct.status === 'inactive' ? 'INACTIVE' : 'ACTIVE',
+        featured: newProduct.featured,
+        newArrival: newProduct.newArrival,
+        shortDescription: newProduct.shortDescription || null,
+        description: newProduct.description || null,
+        material: newProduct.material || null,
+        jewelleryType: newProduct.jewelleryType || null,
+        occasion: newProduct.occasion || null,
+      },
+    });
+  } catch {
+    // Ignore when local MySQL is not running
+  }
+
   return newProduct;
 }
 
@@ -339,11 +271,11 @@ export async function updateUnifiedProduct(
   id: number,
   body: any
 ): Promise<AdminCatalogProduct | null> {
-  const state = getRuntimeCatalog();
-  await getUnifiedAdminProducts();
-  const existing = state.productsMap.get(id);
+  const allProducts = await getUnifiedAdminProducts();
+  const existing = allProducts.find((p) => p.id === id);
   if (!existing) return null;
 
+  const delta = await readCloudDelta();
   const categories = await getUnifiedAdminCategories();
   const matchedCat =
     categories.find((c) => c.id === Number(body.categoryId)) ||
@@ -414,62 +346,31 @@ export async function updateUnifiedProduct(
     images: formattedImages,
   };
 
-  state.productsMap.set(id, updated);
-
-  try {
-    await prisma.product.update({
-      where: { id },
-      data: {
-        name: updated.name,
-        slug: updated.slug,
-        sku: updated.sku,
-        regularPrice: updated.regularPrice,
-        salePrice: updated.salePrice,
-        stock: updated.stock,
-        status: updated.status === 'inactive' ? 'INACTIVE' : 'ACTIVE',
-        featured: updated.featured,
-        newArrival: updated.newArrival,
-        shortDescription: updated.shortDescription || null,
-        description: updated.description || null,
-        material: updated.material || null,
-        jewelleryType: updated.jewelleryType || null,
-        occasion: updated.occasion || null,
-        ...(Array.isArray(body.images)
-          ? {
-              images: {
-                deleteMany: {},
-                create: formattedImages.map((img: any, idx: number) => ({
-                  imageUrl: img.url,
-                  isPrimary: Boolean(img.isPrimary ?? idx === 0),
-                  displayOrder: img.displayOrder ?? idx,
-                })),
-              },
-            }
-          : {}),
-      },
-    });
-  } catch {
-    // Ignore if product only exists in WP catalog / runtime map
-  }
+  delta.upsertedProducts = {
+    ...(delta.upsertedProducts || {}),
+    [id]: updated,
+  };
+  await writeCloudDelta(delta);
 
   return updated;
 }
 
 export async function deleteUnifiedProduct(id: number): Promise<boolean> {
-  const state = getRuntimeCatalog();
-  state.deletedProductIds.add(id);
-  state.productsMap.delete(id);
+  const delta = await readCloudDelta();
+  const deletedSet = new Set(delta.deletedProductIds || []);
+  deletedSet.add(id);
+  delta.deletedProductIds = Array.from(deletedSet);
 
-  try {
-    await prisma.product.delete({ where: { id } });
-  } catch {
-    // Ignore if product was from WP catalog
+  if (delta.upsertedProducts && delta.upsertedProducts[id]) {
+    delete delta.upsertedProducts[id];
   }
+
+  await writeCloudDelta(delta);
   return true;
 }
 
 export async function createUnifiedCategory(body: any): Promise<AdminCatalogCategory> {
-  const state = getRuntimeCatalog();
+  const delta = await readCloudDelta();
   const slug =
     body.slug ||
     body.name
@@ -478,21 +379,8 @@ export async function createUnifiedCategory(body: any): Promise<AdminCatalogCate
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/(^-|-$)/g, '');
 
-  let createdId = state.nextCategoryId++;
-  try {
-    const dbCat = await prisma.category.create({
-      data: {
-        name: body.name,
-        slug,
-        description: body.description || null,
-        image: body.image || DEFAULT_WP_CATEGORY_IMG,
-        status: body.status === 'inactive' ? 'INACTIVE' : 'ACTIVE',
-      },
-    });
-    createdId = dbCat.id;
-  } catch {
-    // Fallback to runtime state
-  }
+  const createdId = delta.nextCategoryId || 200;
+  delta.nextCategoryId = createdId + 1;
 
   const newCat: AdminCatalogCategory = {
     id: createdId,
@@ -504,8 +392,13 @@ export async function createUnifiedCategory(body: any): Promise<AdminCatalogCate
     status: body.status === 'inactive' ? 'inactive' : 'active',
   };
 
-  state.deletedCategoryIds.delete(createdId);
-  state.categoriesMap.set(createdId, newCat);
+  delta.deletedCategoryIds = (delta.deletedCategoryIds || []).filter((id) => id !== createdId);
+  delta.upsertedCategories = {
+    ...(delta.upsertedCategories || {}),
+    [createdId]: newCat,
+  };
+
+  await writeCloudDelta(delta);
   return newCat;
 }
 
@@ -513,11 +406,11 @@ export async function updateUnifiedCategory(
   id: number,
   body: any
 ): Promise<AdminCatalogCategory | null> {
-  const state = getRuntimeCatalog();
-  await getUnifiedAdminCategories();
-  const existing = state.categoriesMap.get(id);
+  const allCats = await getUnifiedAdminCategories();
+  const existing = allCats.find((c) => c.id === id);
   if (!existing) return null;
 
+  const delta = await readCloudDelta();
   const updated: AdminCatalogCategory = {
     ...existing,
     name: body.name ?? existing.name,
@@ -532,36 +425,25 @@ export async function updateUnifiedCategory(
         : existing.status,
   };
 
-  state.categoriesMap.set(id, updated);
-
-  try {
-    await prisma.category.update({
-      where: { id },
-      data: {
-        name: updated.name,
-        slug: updated.slug,
-        description: updated.description,
-        image: updated.image,
-        status: updated.status === 'inactive' ? 'INACTIVE' : 'ACTIVE',
-      },
-    });
-  } catch {
-    // Ignore if category only in runtime map
-  }
-
+  delta.upsertedCategories = {
+    ...(delta.upsertedCategories || {}),
+    [id]: updated,
+  };
+  await writeCloudDelta(delta);
   return updated;
 }
 
 export async function deleteUnifiedCategory(id: number): Promise<boolean> {
-  const state = getRuntimeCatalog();
-  state.deletedCategoryIds.add(id);
-  state.categoriesMap.delete(id);
+  const delta = await readCloudDelta();
+  const deletedSet = new Set(delta.deletedCategoryIds || []);
+  deletedSet.add(id);
+  delta.deletedCategoryIds = Array.from(deletedSet);
 
-  try {
-    await prisma.category.delete({ where: { id } });
-  } catch {
-    // Ignore if category only in runtime map
+  if (delta.upsertedCategories && delta.upsertedCategories[id]) {
+    delete delta.upsertedCategories[id];
   }
+
+  await writeCloudDelta(delta);
   return true;
 }
 
@@ -623,13 +505,25 @@ function mapAdminProductToStorefront(p: AdminCatalogProduct): Product {
     : [];
 
   let jewelleryType: Product['jewelleryType'] = 'Gold Plated';
-  if (p.jewelleryType === 'Temple Jewellery' || p.jewelleryType === 'AD Stone' || p.jewelleryType === 'Anti Tarnish' || p.jewelleryType === 'Kundan' || p.jewelleryType === 'Silver Finish') {
+  if (
+    p.jewelleryType === 'Temple Jewellery' ||
+    p.jewelleryType === 'AD Stone' ||
+    p.jewelleryType === 'Anti Tarnish' ||
+    p.jewelleryType === 'Kundan' ||
+    p.jewelleryType === 'Silver Finish'
+  ) {
     jewelleryType = p.jewelleryType;
-  } else if (categoriesList.some((c) => c.slug === 'ad-jewellery' || c.slug === 'diamond-pendant')) {
+  } else if (
+    categoriesList.some((c) => c.slug === 'ad-jewellery' || c.slug === 'diamond-pendant')
+  ) {
     jewelleryType = 'AD Stone';
   } else if (categoriesList.some((c) => c.slug === 'anti-tarnish-jewellery')) {
     jewelleryType = 'Anti Tarnish';
-  } else if (/temple|lakshmi|lekshmi|palakka|mullamottu|nagapadam|kasu|elakkathali|ilakkathali/i.test(p.name)) {
+  } else if (
+    /temple|lakshmi|lekshmi|palakka|mullamottu|nagapadam|kasu|elakkathali|ilakkathali/i.test(
+      p.name
+    )
+  ) {
     jewelleryType = 'Temple Jewellery';
   }
 
@@ -665,10 +559,14 @@ function mapAdminProductToStorefront(p: AdminCatalogProduct): Product {
     specifications: {
       material: p.material || 'Premium Gold Plated Brass',
       plating: '22K Micro Gold Plated',
-      stoneType: jewelleryType === 'AD Stone' ? 'AAA+ American Diamond / Kemp' : 'Semi-Precious Kempu & Pearls',
+      stoneType:
+        jewelleryType === 'AD Stone'
+          ? 'AAA+ American Diamond / Kemp'
+          : 'Semi-Precious Kempu & Pearls',
       weight: p.weight || '45g',
       dimensions: p.size || 'Adjustable Free Size',
-      careInstructions: 'Keep away from perfume, sprays, and water. Store in a dry jewellery box.',
+      careInstructions:
+        'Keep away from perfume, sprays, and water. Store in a dry jewellery box.',
     },
   };
 }
@@ -787,84 +685,8 @@ export async function getStoreProductBySlug(slug: string): Promise<Product | nul
   return all.find((p) => p.slug === slug || String(p.id) === slug) || null;
 }
 
-
-export type UnifiedOrderItem = {
-  id: number;
-  productId: number;
-  productName: string;
-  sku: string;
-  variant: string;
-  jewelleryType: string;
-  productImage: string | null;
-  quantity: number;
-  unitPrice: number;
-  subtotal: number;
-  currentStock: number | null;
-};
-
-export type UnifiedOrder = {
-  id: number;
-  orderNumber: string;
-  customerId: number;
-  customerName: string;
-  customerEmail: string;
-  customerPhone: string;
-  customerStatus: string;
-  subtotal: number;
-  deliveryCharge: number;
-  tax: number;
-  discount: number;
-  totalAmount: number;
-  paymentMethod: string;
-  paymentStatus: string;
-  orderStatus: string;
-  stockDeducted: boolean;
-  shippingAddress: string;
-  billingAddress: string;
-  customerNotes: string;
-  couponCode: string | null;
-  transactionId: string | null;
-  itemsCount: number;
-  items: UnifiedOrderItem[];
-  statusHistory: {
-    id: number;
-    prevStatus: string | null;
-    newStatus: string;
-    comment: string;
-    updatedBy: string;
-    date: string;
-  }[];
-  createdAt: string;
-  formattedDate: string;
-  updatedAt: string;
-  formattedUpdatedAt: string;
-};
-
-const globalForOrders = globalThis as unknown as {
-  __charmikaOrders?: Map<number, UnifiedOrder>;
-  __charmikaNextOrderId?: number;
-};
-
-function getRuntimeOrders(): Map<number, UnifiedOrder> {
-  if (!globalForOrders.__charmikaOrders) {
-    globalForOrders.__charmikaOrders = new Map<number, UnifiedOrder>();
-    globalForOrders.__charmikaNextOrderId = 1001;
-  }
-  return globalForOrders.__charmikaOrders;
-}
-
-function formatDateTime(d: Date | string) {
-  return new Intl.DateTimeFormat('en-GB', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(new Date(d));
-}
-
 export async function createUnifiedOrder(body: any): Promise<UnifiedOrder> {
-  const ordersMap = getRuntimeOrders();
+  const delta = await readCloudDelta();
   const allProducts = await getUnifiedAdminProducts();
   const billing = body.billing || {};
   const shipping = body.shipping || billing;
@@ -894,11 +716,12 @@ export async function createUnifiedOrder(body: any): Promise<UnifiedOrder> {
   const discount = Number(body.discount ?? 0);
   const totalAmount = Math.max(1, subtotal + deliveryCharge - discount);
 
-  let orderId = (globalForOrders.__charmikaNextOrderId = (globalForOrders.__charmikaNextOrderId || 1000) + 1);
-  let orderNumber = `ORD-${orderId}`;
-  let customerId = orderId;
+  const orderId = delta.nextOrderId || 1001;
+  delta.nextOrderId = orderId + 1;
+  const orderNumber = `ORD-${orderId}`;
 
-  const customerName = `${billing.firstName || ''} ${billing.lastName || ''}`.trim() || 'Guest Customer';
+  const customerName =
+    `${billing.firstName || ''} ${billing.lastName || ''}`.trim() || 'Guest Customer';
   const customerEmail = (billing.email || 'guest@charmika.com').trim();
   const customerPhone = (billing.phone || '').trim();
   const fullShippingAddr = [
@@ -912,65 +735,11 @@ export async function createUnifiedOrder(body: any): Promise<UnifiedOrder> {
     .filter(Boolean)
     .join(', ');
 
-  try {
-    let dbCustomer = await prisma.customer.findUnique({ where: { email: customerEmail } });
-    if (!dbCustomer) {
-      dbCustomer = await prisma.customer.create({
-        data: {
-          name: customerName,
-          email: customerEmail,
-          phone: customerPhone,
-          status: 'active',
-          address: shipping.addressLine1 || '',
-          city: shipping.city || '',
-          state: shipping.state || '',
-          postalCode: shipping.pincode || '',
-        },
-      });
-    }
-    customerId = dbCustomer.id;
-
-    const dbOrder = await prisma.order.create({
-      data: {
-        orderNumber: `ORD-${Date.now().toString().slice(-6)}`,
-        customerId: dbCustomer.id,
-        subtotal,
-        deliveryCharge,
-        tax: 0,
-        discount,
-        totalAmount,
-        paymentMethod: body.payment_method || 'payu',
-        paymentStatus: 'pending',
-        orderStatus: 'pending',
-        shippingAddress: fullShippingAddr,
-        billingAddress: fullShippingAddr,
-        customerNotes: body.customer_note || '',
-        items: {
-          create: items.map((item) => ({
-            productId: item.productId,
-            productName: item.productName,
-            sku: item.sku,
-            variant: item.variant,
-            jewelleryType: item.jewelleryType,
-            productImage: item.productImage,
-            quantity: item.quantity,
-            unitPrice: item.unitPrice,
-            subtotal: item.subtotal,
-          })),
-        },
-      },
-    });
-    orderId = dbOrder.id;
-    orderNumber = dbOrder.orderNumber;
-  } catch {
-    // Fallback to runtime store when DB is not connected
-  }
-
   const nowIso = new Date().toISOString();
   const newOrder: UnifiedOrder = {
     id: orderId,
     orderNumber,
-    customerId,
+    customerId: orderId,
     customerName,
     customerEmail,
     customerPhone,
@@ -1007,126 +776,62 @@ export async function createUnifiedOrder(body: any): Promise<UnifiedOrder> {
     formattedUpdatedAt: formatDateTime(nowIso),
   };
 
-  ordersMap.set(orderId, newOrder);
+  delta.upsertedOrders = {
+    ...(delta.upsertedOrders || {}),
+    [orderId]: newOrder,
+  };
+  await writeCloudDelta(delta);
+
   return newOrder;
 }
 
 export async function updateUnifiedOrderStatus(
   id: number,
-  updates: { orderStatus?: string; paymentStatus?: string; transactionId?: string; comment?: string }
+  updates: {
+    orderStatus?: string;
+    paymentStatus?: string;
+    transactionId?: string;
+    comment?: string;
+  }
 ): Promise<UnifiedOrder | null> {
-  const ordersMap = getRuntimeOrders();
-  const existing = ordersMap.get(id);
+  const delta = await readCloudDelta();
+  const existing = (delta.upsertedOrders || {})[id] as UnifiedOrder | undefined;
+  if (!existing) return null;
 
-  if (existing) {
-    const prevStatus = existing.orderStatus;
-    const newStatus = updates.orderStatus || existing.orderStatus;
-    const nowIso = new Date().toISOString();
-    const updated: UnifiedOrder = {
-      ...existing,
-      orderStatus: newStatus,
-      paymentStatus: updates.paymentStatus || existing.paymentStatus,
-      transactionId: updates.transactionId || existing.transactionId,
-      updatedAt: nowIso,
-      formattedUpdatedAt: formatDateTime(nowIso),
-      statusHistory: [
-        {
-          id: existing.statusHistory.length + 1,
-          prevStatus,
-          newStatus,
-          comment: updates.comment || `Order status updated to ${newStatus}`,
-          updatedBy: 'Admin',
-          date: formatDateTime(nowIso),
-        },
-        ...existing.statusHistory,
-      ],
-    };
-    ordersMap.set(id, updated);
-  }
-
-  try {
-    await prisma.order.update({
-      where: { id },
-      data: {
-        ...(updates.orderStatus ? { orderStatus: updates.orderStatus } : {}),
-        ...(updates.paymentStatus ? { paymentStatus: updates.paymentStatus } : {}),
-        ...(updates.transactionId ? { transactionId: updates.transactionId } : {}),
+  const prevStatus = existing.orderStatus;
+  const newStatus = updates.orderStatus || existing.orderStatus;
+  const nowIso = new Date().toISOString();
+  const updated: UnifiedOrder = {
+    ...existing,
+    orderStatus: newStatus,
+    paymentStatus: updates.paymentStatus || existing.paymentStatus,
+    transactionId: updates.transactionId || existing.transactionId,
+    updatedAt: nowIso,
+    formattedUpdatedAt: formatDateTime(nowIso),
+    statusHistory: [
+      {
+        id: (existing.statusHistory?.length || 0) + 1,
+        prevStatus,
+        newStatus,
+        comment: updates.comment || `Order status updated to ${newStatus}`,
+        updatedBy: 'Admin',
+        date: formatDateTime(nowIso),
       },
-    });
-  } catch {
-    // Ignore when DB is not connected
-  }
+      ...(existing.statusHistory || []),
+    ],
+  };
 
-  return ordersMap.get(id) || null;
+  delta.upsertedOrders = {
+    ...(delta.upsertedOrders || {}),
+    [id]: updated,
+  };
+  await writeCloudDelta(delta);
+
+  return updated;
 }
 
 export async function getUnifiedOrders(): Promise<UnifiedOrder[]> {
-  const ordersMap = getRuntimeOrders();
-
-  try {
-    const dbOrders = await prisma.order.findMany({
-      include: {
-        customer: true,
-        items: true,
-        statusHistory: { orderBy: { createdAt: 'desc' } },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
-
-    for (const o of dbOrders) {
-      ordersMap.set(o.id, {
-        id: o.id,
-        orderNumber: o.orderNumber,
-        customerId: o.customerId,
-        customerName: o.customer?.name || 'Customer',
-        customerEmail: o.customer?.email || '',
-        customerPhone: o.customer?.phone || '',
-        customerStatus: o.customer?.status || 'active',
-        subtotal: Number(o.subtotal),
-        deliveryCharge: Number(o.deliveryCharge),
-        tax: Number(o.tax),
-        discount: Number(o.discount),
-        totalAmount: Number(o.totalAmount),
-        paymentMethod: o.paymentMethod,
-        paymentStatus: o.paymentStatus,
-        orderStatus: o.orderStatus,
-        stockDeducted: o.stockDeducted,
-        shippingAddress: o.shippingAddress || '',
-        billingAddress: o.billingAddress || o.shippingAddress || '',
-        customerNotes: o.customerNotes || '',
-        couponCode: o.couponCode || null,
-        transactionId: o.transactionId || null,
-        itemsCount: o.items ? o.items.reduce((acc, i) => acc + i.quantity, 0) : 0,
-        items: (o.items || []).map((i) => ({
-          id: i.id,
-          productId: i.productId,
-          productName: i.productName || 'Product',
-          sku: i.sku || '',
-          variant: i.variant || 'Standard Size',
-          jewelleryType: i.jewelleryType || 'Jewellery',
-          productImage: i.productImage || DEFAULT_WP_PRODUCT_IMG,
-          quantity: i.quantity,
-          unitPrice: Number(i.unitPrice),
-          subtotal: Number(i.subtotal),
-          currentStock: 10,
-        })),
-        statusHistory: (o.statusHistory || []).map((h) => ({
-          id: h.id,
-          prevStatus: h.prevStatus,
-          newStatus: h.newStatus,
-          comment: h.comment || '',
-          updatedBy: h.updatedBy || 'Admin',
-          date: formatDateTime(h.createdAt),
-        })),
-        createdAt: o.createdAt.toISOString(),
-        formattedDate: formatDateTime(o.createdAt),
-        updatedAt: o.updatedAt.toISOString(),
-        formattedUpdatedAt: formatDateTime(o.updatedAt),
-      });
-    }
-  } catch {
-    // Database not connected; use runtime orders map
-  }
-
-  return Array.from(ordersMap.values()).sort((a, b) => b.id - a.id);
+  const delta = await readCloudDelta();
+  const orders = Object.values(delta.upsertedOrders || {}) as UnifiedOrder[];
+  return orders.sort((a, b) => b.id - a.id);
 }
