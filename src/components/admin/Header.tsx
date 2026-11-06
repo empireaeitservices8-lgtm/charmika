@@ -1,14 +1,19 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { Menu, ChevronRight, ChevronDown, UserCircle, LogOut } from "lucide-react";
+import { authService, type AdminUser } from "@/lib/services/auth.service";
 
 function getTitle(pathname: string) {
   if (pathname.startsWith("/admin/products/edit")) return "Edit Product";
+  if (pathname.startsWith("/admin/orders/")) return "Order Details";
+  if (pathname.startsWith("/admin/customers/")) return "Customer Details";
   const titles: Record<string, string> = {
     "/admin/dashboard": "Dashboard",
+    "/admin/orders": "Orders",
+    "/admin/customers": "Customers",
     "/admin/products": "Products",
     "/admin/products/add": "Add Product",
     "/admin/categories": "Categories",
@@ -21,16 +26,48 @@ function getCrumbs(pathname: string, title: string) {
   const crumbs = ["Admin"];
   if (pathname === "/admin/products/add" || pathname.startsWith("/admin/products/edit")) {
     crumbs.push("Products");
+  } else if (pathname.startsWith("/admin/orders/")) {
+    crumbs.push("Orders");
+  } else if (pathname.startsWith("/admin/customers/")) {
+    crumbs.push("Customers");
   }
   crumbs.push(title);
   return crumbs;
 }
 
 export default function Header({ onMenuClick }: { onMenuClick: () => void }) {
+  const router = useRouter();
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [admin, setAdmin] = useState<AdminUser | null>(null);
+
   const title = getTitle(pathname);
   const crumbs = getCrumbs(pathname, title);
+
+  useEffect(() => {
+    authService
+      .getMe()
+      .then(setAdmin)
+      .catch(() => {
+        // Not authenticated, redirect to login if not already on login
+        if (pathname !== "/login" && pathname !== "/admin/login") {
+          router.push("/login");
+        }
+      });
+  }, [pathname, router]);
+
+  async function handleLogout() {
+    try {
+      await authService.logout();
+    } catch (err) {
+      console.error("Logout error:", err);
+    } finally {
+      router.push("/login");
+    }
+  }
+
+  const initial = admin?.name ? admin.name.charAt(0).toUpperCase() : "A";
+  const adminName = admin?.name || "Admin";
 
   return (
     <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-gold/20 bg-white/90 px-4 backdrop-blur sm:px-6">
@@ -65,10 +102,10 @@ export default function Header({ onMenuClick }: { onMenuClick: () => void }) {
           className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-beige"
         >
           <span className="flex h-8 w-8 items-center justify-center rounded-full bg-maroon text-xs font-bold text-gold">
-            A
+            {initial}
           </span>
           <span className="hidden text-left sm:block">
-            <span className="block text-xs font-semibold text-charcoal">Admin</span>
+            <span className="block text-xs font-semibold text-charcoal">{adminName}</span>
             <span className="block text-[10px] text-charcoal/50">Administrator</span>
           </span>
           <ChevronDown className="h-3.5 w-3.5 text-charcoal/50" />
@@ -83,12 +120,15 @@ export default function Header({ onMenuClick }: { onMenuClick: () => void }) {
             >
               <UserCircle className="h-4 w-4 text-maroon" /> My Profile
             </Link>
-            <Link
-              href="/admin/login"
-              className="flex items-center gap-2 px-4 py-2 text-xs font-medium text-charcoal hover:bg-beige"
+            <button
+              onClick={() => {
+                setMenuOpen(false);
+                handleLogout();
+              }}
+              className="flex w-full items-center gap-2 px-4 py-2 text-left text-xs font-medium text-charcoal hover:bg-beige"
             >
               <LogOut className="h-4 w-4 text-maroon" /> Logout
-            </Link>
+            </button>
           </div>
         )}
       </div>

@@ -1,19 +1,25 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import {
   LayoutDashboard,
   Package,
   PlusCircle,
   FolderTree,
   UserCircle,
+  ShoppingBag,
+  Users,
   LogOut,
   X,
+  ExternalLink,
 } from "lucide-react";
+import { authService } from "@/lib/services/auth.service";
 
 const navItems = [
   { label: "Dashboard", href: "/admin/dashboard", icon: LayoutDashboard },
+  { label: "Orders", href: "/admin/orders", icon: ShoppingBag },
+  { label: "Customers", href: "/admin/customers", icon: Users },
   { label: "Products", href: "/admin/products", icon: Package },
   { label: "Add Product", href: "/admin/products/add", icon: PlusCircle },
   { label: "Categories", href: "/admin/categories", icon: FolderTree },
@@ -24,11 +30,28 @@ function isActive(pathname: string, href: string) {
   if (href === "/admin/products") {
     return pathname === href || pathname.startsWith("/admin/products/edit");
   }
+  if (href === "/admin/orders") {
+    return pathname === href || pathname.startsWith("/admin/orders/");
+  }
+  if (href === "/admin/customers") {
+    return pathname === href || pathname.startsWith("/admin/customers/");
+  }
   return pathname === href;
 }
 
 export default function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const router = useRouter();
   const pathname = usePathname();
+
+  async function handleLogout() {
+    try {
+      await authService.logout();
+    } catch (err) {
+      console.error("Logout error:", err);
+    } finally {
+      router.push("/login");
+    }
+  }
 
   return (
     <>
@@ -77,15 +100,30 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
           ))}
         </nav>
 
-        {/* Logout */}
-        <div className="border-t border-gold/20 p-3">
+        {/* Footer Actions */}
+        <div className="border-t border-gold/20 p-3 space-y-1">
           <Link
-            href="/admin/login"
-            className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-white/70 transition-colors hover:bg-white/10 hover:text-white"
+            href="/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm font-medium text-gold hover:bg-gold/10 transition-colors"
+          >
+            <span className="flex items-center gap-3">
+              <ExternalLink className="h-4 w-4" />
+              View Storefront
+            </span>
+            <span className="text-[10px] uppercase tracking-wider bg-gold/20 text-gold px-1.5 py-0.5 rounded">
+              Live
+            </span>
+          </Link>
+
+          <button
+            onClick={handleLogout}
+            className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-white/70 transition-colors hover:bg-white/10 hover:text-white"
           >
             <LogOut className="h-4 w-4" />
             Logout
-          </Link>
+          </button>
         </div>
       </aside>
     </>

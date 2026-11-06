@@ -1,0 +1,207 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  SUPER_ADMIN
+}
+
+enum Status {
+  ACTIVE
+  INACTIVE
+}
+
+model Admin {
+  id           Int      @id @default(autoincrement())
+  name         String   @db.VarChar(100)
+  email        String   @unique @db.VarChar(191)
+  passwordHash String   @db.VarChar(255)
+  role         Role     @default(ADMIN)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@map("admins")
+}
+
+model Category {
+  id          Int       @id @default(autoincrement())
+  name        String    @unique @db.VarChar(100)
+  slug        String    @unique @db.VarChar(120)
+  description String?   @db.Text
+  image       String?   @db.VarChar(500)
+  status      Status    @default(ACTIVE)
+  products    Product[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([slug])
+  @@map("categories")
+}
+
+model Product {
+  id               Int            @id @default(autoincrement())
+  name             String         @db.VarChar(200)
+  slug             String         @unique @db.VarChar(250)
+  sku              String         @unique @db.VarChar(100)
+  
+  categoryId       Int
+  category         Category       @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  
+  regularPrice     Decimal        @db.Decimal(10, 2)
+  salePrice        Decimal?       @db.Decimal(10, 2)
+  costPrice        Decimal?       @db.Decimal(10, 2)
+  stock            Int            @default(0)
+  status           Status         @default(ACTIVE)
+  
+  featured         Boolean        @default(false)
+  newArrival       Boolean        @default(false)
+  
+  shortDescription String?        @db.VarChar(500)
+  description      String?        @db.Text
+  
+  material         String?        @db.VarChar(150)
+  jewelleryType    String?        @db.VarChar(100)
+  weight           String?        @db.VarChar(50)
+  size             String?        @db.VarChar(50)
+  colour           String?        @db.VarChar(50)
+  occasion         String?        @db.VarChar(100)
+  collection       String?        @db.VarChar(100)
+  tags             String?        @db.VarChar(255)
+  
+  images           ProductImage[]
+  orderItems       OrderItem[]
+  
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  @@index([categoryId])
+  @@index([status])
+  @@index([sku])
+  @@index([featured])
+  @@index([newArrival])
+  @@map("products")
+}
+
+model ProductImage {
+  id           Int      @id @default(autoincrement())
+  productId    Int
+  product      Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  imageUrl     String   @db.VarChar(500)
+  isPrimary    Boolean  @default(false)
+  displayOrder Int      @default(0)
+  createdAt    DateTime @default(now())
+
+  @@index([productId])
+  @@map("product_images")
+}
+
+model Customer {
+  id        Int               @id @default(autoincrement())
+  name      String            @db.VarChar(150)
+  email     String            @unique @db.VarChar(191)
+  phone     String?           @db.VarChar(25)
+  status    String            @default("active") @db.VarChar(50)
+  address   String?           @db.Text
+  city      String?           @db.VarChar(100)
+  state     String?           @db.VarChar(100)
+  postalCode String?          @db.VarChar(20)
+  addresses CustomerAddress[]
+  orders    Order[]
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+
+  @@map("customers")
+}
+
+model CustomerAddress {
+  id           Int      @id @default(autoincrement())
+  customerId   Int
+  customer     Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  fullName     String?  @db.VarChar(150)
+  phone        String?  @db.VarChar(25)
+  addressLine1 String   @db.VarChar(255)
+  addressLine2 String?  @db.VarChar(255)
+  city         String   @db.VarChar(100)
+  state        String   @db.VarChar(100)
+  postalCode   String   @db.VarChar(20)
+  country      String   @default("India") @db.VarChar(50)
+  isDefault    Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([customerId])
+  @@map("customer_addresses")
+}
+
+model Order {
+  id              Int                 @id @default(autoincrement())
+  orderNumber     String              @unique @db.VarChar(50)
+  customerId      Int
+  customer        Customer            @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  customerPhone   String?             @db.VarChar(25)
+  subtotal        Decimal             @default(0) @db.Decimal(10, 2)
+  deliveryCharge  Decimal             @default(0) @db.Decimal(10, 2)
+  tax             Decimal             @default(0) @db.Decimal(10, 2)
+  discount        Decimal             @default(0) @db.Decimal(10, 2)
+  couponCode      String?             @db.VarChar(50)
+  totalAmount     Decimal             @db.Decimal(10, 2)
+  paymentMethod   String              @default("UPI") @db.VarChar(50)
+  paymentStatus   String              @default("pending") @db.VarChar(50)
+  transactionId   String?             @db.VarChar(100)
+  orderStatus     String              @default("pending") @db.VarChar(50)
+  stockDeducted   Boolean             @default(false)
+  shippingAddress String?             @db.Text
+  billingAddress  String?             @db.Text
+  customerNotes   String?             @db.Text
+  items           OrderItem[]
+  statusHistory   OrderStatusHistory[]
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  @@index([customerId])
+  @@index([orderNumber])
+  @@index([orderStatus])
+  @@index([paymentStatus])
+  @@map("orders")
+}
+
+model OrderItem {
+  id           Int      @id @default(autoincrement())
+  orderId      Int
+  order        Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId    Int
+  product      Product  @relation(fields: [productId], references: [id], onDelete: Restrict)
+  productName  String   @default("") @db.VarChar(200)
+  sku          String?  @db.VarChar(100)
+  variant      String?  @db.VarChar(100)
+  jewelleryType String? @db.VarChar(100)
+  productImage String?  @db.VarChar(500)
+  quantity     Int      @default(1)
+  unitPrice    Decimal  @db.Decimal(10, 2)
+  subtotal     Decimal  @default(0) @db.Decimal(10, 2)
+
+  @@index([orderId])
+  @@index([productId])
+  @@map("order_items")
+}
+
+model OrderStatusHistory {
+  id         Int      @id @default(autoincrement())
+  orderId    Int
+  order      Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  prevStatus String   @db.VarChar(50)
+  newStatus  String   @db.VarChar(50)
+  comment    String?  @db.Text
+  updatedBy  String   @default("Admin") @db.VarChar(100)
+  createdAt  DateTime @default(now())
+
+  @@index([orderId])
+  @@map("order_status_history")
+}

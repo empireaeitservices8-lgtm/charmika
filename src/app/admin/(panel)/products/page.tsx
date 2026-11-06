@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useEffect } from "react";
+import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import {
   Search,
@@ -14,80 +14,94 @@ import {
   AlertTriangle,
   PackageOpen,
   Loader2,
+  RotateCcw,
 } from "lucide-react";
 import PageHeader from "@/components/admin/PageHeader";
-import { categories, products as initialMockProducts, type Product } from "@/lib/mockData";
 import { inputClass, cardClass, primaryBtn, secondaryBtn } from "@/components/admin/ui";
+import { productService, type Product } from "@/lib/services/product.service";
+import { categoryService, type Category } from "@/lib/services/category.service";
 
 const rupees = (n: number) => `₹${n.toLocaleString("en-IN")}`;
 
 export default function ProductsPage() {
-  const [productList, setProductList] = useState<Product[]>(initialMockProducts);
-  const [loading, setLoading] = useState(true);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("all");
   const [status, setStatus] = useState("all");
   const [stock, setStock] = useState("all");
   const [sort, setSort] = useState("newest");
+  const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState({ page: 1, limit: 10, total: 0, totalPages: 1 });
+  const [loading, setLoading] = useState(true);
   const [toDelete, setToDelete] = useState<Product | null>(null);
-  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
+  // Load categories for filter dropdown
   useEffect(() => {
-    async function fetchProducts() {
-      try {
-        setLoading(true);
-        const res = await fetch("/api/products");
-        if (res.ok) {
-          const data = await res.json();
-          if (Array.isArray(data) && data.length > 0) {
-            setProductList(data);
-          }
-        }
-      } catch (e) {
-        console.error("Failed to load products from API:", e);
-      } finally {
-        setLoading(false);
-      }
-    }
-    fetchProducts();
+    categoryService.getAll().then(setCategories).catch(console.error);
   }, []);
 
-  async function handleDeleteProduct() {
-    if (!toDelete) return;
+  // Fetch products
+  const fetchProducts = useCallback(async () => {
+    setLoading(true);
     try {
-      setIsDeleting(true);
-      const res = await fetch(`/api/products/${toDelete.id}`, { method: "DELETE" });
-      if (res.ok) {
-        setProductList((prev) => prev.filter((p) => p.id !== toDelete.id));
+      const res = await productService.getAll({
+        page,
+        limit: 10,
+        query,
+        category,
+        status,
+        stock,
+        sort,
+      });
+      setProducts(res.products);
+      if (res.pagination) {
+        setPagination(res.pagination);
       }
-    } catch (e) {
-      console.error("Failed to delete product:", e);
+    } catch (err) {
+      console.error("Failed to fetch products:", err);
     } finally {
-      setIsDeleting(false);
+      setLoading(false);
+    }
+  }, [page, query, category, status, stock, sort]);
+
+  useEffect(() => {
+    fetchProducts();
+  }, [fetchProducts]);
+
+  // Handle Delete
+  async function confirmDelete() {
+    if (!toDelete) return;
+    setDeleting(true);
+    try {
+      await productService.delete(toDelete.id);
       setToDelete(null);
+      fetchProducts();
+    } catch (err) {
+      console.error("Failed to delete product:", err);
+      alert("Failed to delete product. Please try again.");
+    } finally {
+      setDeleting(false);
     }
   }
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    const list = [...productList].filter((p) => {
-      const matchesText = !q || (p.name && p.name.toLowerCase().includes(q)) || (p.sku && p.sku.toLowerCase().includes(q));
-      const matchesCategory = category === "all" || p.category === category;
-      const matchesStatus = status === "all" || p.status === status;
-      const matchesStock =
-        stock === "all" ||
-        (stock === "out" && (p.stock || 0) <= 0) ||
-        (stock === "low" && (p.stock || 0) > 0 && (p.stock || 0) <= 5) ||
-        (stock === "in" && (p.stock || 0) > 5);
-      return matchesText && matchesCategory && matchesStatus && matchesStock;
-    });
-    const price = (p: Product) => p.salePrice ?? p.regularPrice ?? 0;
-    if (sort === "price-asc") list.sort((a, b) => price(a) - price(b));
-    else if (sort === "price-desc") list.sort((a, b) => price(b) - price(a));
-    else if (sort === "name") list.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
-    else list.sort((a, b) => Number(b.id) - Number(a.id));
-    return list;
-  }, [productList, query, category, status, stock, sort]);
+  function clearFilters() {
+    setQuery("");
+    setCategory("all");
+    setStatus("all");
+    setStock("all");
+    setSort("newest");
+    setPage(1);
+  }
+
+  const hasActiveFilters = Boolean(
+    query.trim() ||
+    category !== "all" ||
+    status !== "all" ||
+    stock !== "all" ||
+    sort !== "newest"
+  );
 
   return (
     <div className="space-y-6">
@@ -104,48 +118,102 @@ export default function ProductsPage() {
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-charcoal/40" />
           <input
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setPage(1);
+            }}
             placeholder="Search by name or SKU..."
             className={`${inputClass} pl-9`}
           />
         </div>
-        <select value={category} onChange={(e) => setCategory(e.target.value)} className={`${inputClass} lg:w-40`}>
+        <select
+          value={category}
+          onChange={(e) => {
+            setCategory(e.target.value);
+            setPage(1);
+          }}
+          className={`${inputClass} lg:w-40`}
+        >
           <option value="all">All categories</option>
           {categories.map((c) => (
-            <option key={c.id}>{c.name}</option>
+            <option key={c.id} value={c.name}>
+              {c.name}
+            </option>
           ))}
         </select>
-        <select value={status} onChange={(e) => setStatus(e.target.value)} className={`${inputClass} lg:w-36`}>
+        <select
+          value={status}
+          onChange={(e) => {
+            setStatus(e.target.value);
+            setPage(1);
+          }}
+          className={`${inputClass} lg:w-36`}
+        >
           <option value="all">All status</option>
           <option value="active">Active</option>
           <option value="inactive">Inactive</option>
         </select>
-        <select value={stock} onChange={(e) => setStock(e.target.value)} className={`${inputClass} lg:w-36`}>
+        <select
+          value={stock}
+          onChange={(e) => {
+            setStock(e.target.value);
+            setPage(1);
+          }}
+          className={`${inputClass} lg:w-36`}
+        >
           <option value="all">All stock</option>
           <option value="in">In stock</option>
           <option value="low">Low stock</option>
           <option value="out">Out of stock</option>
         </select>
-        <select value={sort} onChange={(e) => setSort(e.target.value)} className={`${inputClass} lg:w-44`}>
+        <select
+          value={sort}
+          onChange={(e) => {
+            setSort(e.target.value);
+            setPage(1);
+          }}
+          className={`${inputClass} lg:w-44`}
+        >
           <option value="newest">Newest first</option>
           <option value="price-asc">Price: low to high</option>
           <option value="price-desc">Price: high to low</option>
           <option value="name">Name A–Z</option>
         </select>
+
+        {hasActiveFilters && (
+          <button
+            type="button"
+            onClick={clearFilters}
+            className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-gold/30 bg-beige/60 px-4 py-2.5 text-xs font-semibold text-maroon hover:bg-beige transition-colors whitespace-nowrap"
+          >
+            <RotateCcw className="h-3.5 w-3.5" />
+            Clear Filters
+          </button>
+        )}
       </div>
 
       {/* Table */}
       <div className={`${cardClass} overflow-hidden`}>
         {loading ? (
-          <div className="flex items-center justify-center p-12 text-center text-xs text-charcoal/60">
-            <Loader2 className="mr-2 h-6 w-6 animate-spin text-maroon" />
-            <span>Loading products catalogue...</span>
+          <div className="flex items-center justify-center p-16 text-charcoal/50">
+            <Loader2 className="mr-2 h-6 w-6 animate-spin text-gold-600" />
+            <span className="text-xs">Loading products...</span>
           </div>
-        ) : filtered.length === 0 ? (
-          <div className="p-12 text-center text-xs text-charcoal/60">
-            <PackageOpen className="mx-auto mb-2 h-10 w-10 text-gold-400" />
-            <p className="text-sm font-semibold text-charcoal">No products match your filters</p>
-            <p className="mt-1">Try a different search or clear a filter.</p>
+        ) : products.length === 0 ? (
+          <div className="p-16 text-center text-xs text-charcoal/60">
+            <PackageOpen className="mx-auto mb-3 h-12 w-12 text-gold-400" />
+            <p className="text-base font-serif font-bold text-maroon">No products match your filters</p>
+            <p className="mt-1 text-charcoal/60">Try adjusting your search criteria or clear your active filters.</p>
+            {hasActiveFilters && (
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-maroon px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-gold hover:text-maroon transition-all"
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+                Clear Filters & Display All
+              </button>
+            )}
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -162,12 +230,17 @@ export default function ProductsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gold/10">
-                {filtered.map((p) => (
+                {products.map((p) => (
                   <tr key={p.id} className="transition-colors hover:bg-beige/30">
                     <td className="px-4 py-3.5">
                       <div className="flex items-center gap-3">
                         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-gold/20 bg-beige text-gold-600">
-                          <Gem className="h-4 w-4" />
+                          {p.primaryImage ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={p.primaryImage} alt={p.name} className="h-full w-full rounded-lg object-cover" />
+                          ) : (
+                            <Gem className="h-4 w-4" />
+                          )}
                         </div>
                         <div className="min-w-0">
                           <span className="block max-w-[200px] truncate font-semibold text-charcoal">{p.name}</span>
@@ -186,7 +259,7 @@ export default function ProductsPage() {
                         </div>
                       </div>
                     </td>
-                    <td className="px-4 py-3.5 font-mono text-charcoal/70">{p.sku || "—"}</td>
+                    <td className="px-4 py-3.5 font-mono text-charcoal/70">{p.sku}</td>
                     <td className="px-4 py-3.5 text-charcoal/80">{p.category}</td>
                     <td className="px-4 py-3.5 font-semibold">
                       {p.salePrice ? (
@@ -199,11 +272,11 @@ export default function ProductsPage() {
                       )}
                     </td>
                     <td className="px-4 py-3.5">
-                      {(p.stock || 0) <= 0 ? (
+                      {p.stock <= 0 ? (
                         <span className="inline-flex items-center rounded bg-rose-50 px-2 py-0.5 text-[10px] font-bold text-rose-700">
                           Out of Stock
                         </span>
-                      ) : (p.stock || 0) <= 5 ? (
+                      ) : p.stock <= 5 ? (
                         <span className="inline-flex items-center rounded bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700">
                           {p.stock} left
                         </span>
@@ -219,15 +292,14 @@ export default function ProductsPage() {
                           p.status === "active" ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"
                         }`}
                       >
-                        {p.status || "active"}
+                        {p.status}
                       </span>
                     </td>
                     <td className="px-4 py-3.5">
                       <div className="flex justify-end gap-1">
                         <Link
-                          href={`/product/${p.slug}`}
-                          target="_blank"
-                          title="View on store"
+                          href={`/admin/products/edit/${p.id}`}
+                          title="View"
                           className="rounded-lg p-2 text-charcoal/60 transition-colors hover:bg-beige hover:text-maroon"
                         >
                           <Eye className="h-4 w-4" />
@@ -259,14 +331,24 @@ export default function ProductsPage() {
         {/* Pagination */}
         <div className="flex items-center justify-between border-t border-gold/15 px-4 py-3 text-xs text-charcoal/60">
           <span>
-            Showing {filtered.length} of {productList.length} products
+            Showing {products.length} of {pagination.total} products
           </span>
           <div className="flex items-center gap-1">
-            <button type="button" disabled className="rounded-lg border border-gold/20 p-1.5 opacity-40">
+            <button
+              type="button"
+              disabled={page <= 1 || loading}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              className="rounded-lg border border-gold/20 p-1.5 transition-colors hover:bg-beige disabled:cursor-not-allowed disabled:opacity-40"
+            >
               <ChevronLeft className="h-4 w-4" />
             </button>
-            <span className="rounded-lg bg-maroon px-2.5 py-1 font-bold text-white">1</span>
-            <button type="button" disabled className="rounded-lg border border-gold/20 p-1.5 opacity-40">
+            <span className="rounded-lg bg-maroon px-2.5 py-1 font-bold text-white">{page}</span>
+            <button
+              type="button"
+              disabled={page >= pagination.totalPages || loading}
+              onClick={() => setPage((p) => p + 1)}
+              className="rounded-lg border border-gold/20 p-1.5 transition-colors hover:bg-beige disabled:cursor-not-allowed disabled:opacity-40"
+            >
               <ChevronRight className="h-4 w-4" />
             </button>
           </div>
@@ -288,7 +370,7 @@ export default function ProductsPage() {
             <div className="mt-5 flex justify-end gap-2">
               <button
                 type="button"
-                disabled={isDeleting}
+                disabled={deleting}
                 onClick={() => setToDelete(null)}
                 className={secondaryBtn}
               >
@@ -296,12 +378,18 @@ export default function ProductsPage() {
               </button>
               <button
                 type="button"
-                disabled={isDeleting}
-                onClick={handleDeleteProduct}
+                disabled={deleting}
+                onClick={confirmDelete}
                 className="inline-flex items-center gap-1.5 rounded-lg bg-rose-700 px-4 py-2 text-xs font-bold uppercase tracking-wider text-white hover:bg-rose-800 disabled:opacity-50"
               >
-                {isDeleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-                Delete
+                {deleting ? (
+                  <>
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    Deleting...
+                  </>
+                ) : (
+                  "Delete"
+                )}
               </button>
             </div>
           </div>

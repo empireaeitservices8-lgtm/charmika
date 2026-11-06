@@ -1,16 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import { usePathname } from "next/navigation";
 import Sidebar from "@/components/admin/Sidebar";
 import Header from "@/components/admin/Header";
 
-export default function PanelLayout({ children }: { children: React.ReactNode }) {
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+function PanelContent({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  // If on login page, render full screen login without admin sidebar/header
-  if (pathname === "/admin/login") {
+  if (pathname === "/admin/login" || pathname === "/login") {
     return <>{children}</>;
   }
 
@@ -19,8 +18,16 @@ export default function PanelLayout({ children }: { children: React.ReactNode })
       <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       <div className="lg:pl-64">
         <Header onMenuClick={() => setSidebarOpen(true)} />
-        <main className="p-4 sm:p-6 lg:p-8">{children}</main>
+        <main className="mx-auto max-w-7xl p-6 sm:p-8 lg:p-10">{children}</main>
       </div>
     </div>
+  );
+}
+
+export default function PanelLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-beige p-6" />}>
+      <PanelContent>{children}</PanelContent>
+    </Suspense>
   );
 }
