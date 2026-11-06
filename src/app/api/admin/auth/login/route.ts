@@ -29,17 +29,24 @@ export async function POST(req: NextRequest) {
     }
 
     // Default admin fallback if DB is not yet populated or seeding
-    if (!admin && cleanEmail === "admin@charmika.com" && (password === "admin123" || password === "CharmikaAdmin@2026")) {
+    const validAdminEmails = ["admin@charmika.com", "charmikajewel@gmail.com"];
+    if (!admin && validAdminEmails.includes(cleanEmail) && (password === "CharmikaAdmin@2026" || password === "admin123")) {
       const fallbackToken = generateAdminToken({
         id: 1,
         email: cleanEmail,
         role: "ADMIN",
+        name: cleanEmail === "charmikajewel@gmail.com" ? "Lekshmi D.S" : "Admin",
       });
       const response = NextResponse.json({
         success: true,
         message: "Sign in successful.",
         data: {
-          admin: { id: 1, name: "Admin", email: cleanEmail, role: "ADMIN" },
+          admin: {
+            id: 1,
+            name: cleanEmail === "charmikajewel@gmail.com" ? "Lekshmi D.S" : "Admin",
+            email: cleanEmail,
+            role: "ADMIN",
+          },
           token: fallbackToken,
         },
       });
