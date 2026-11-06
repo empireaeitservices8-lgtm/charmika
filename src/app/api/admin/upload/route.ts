@@ -1,81 +1,55 @@
-import { NextRequest, NextResponse } from "next/server";
-import path from "path";
-import fs from "fs/promises";
-import { existsSync } from "fs";
+import { NextResponse } from 'next/server';
+import { writeFile, mkdir } from 'fs/promises';
+import path from 'path';
 
-export const dynamic = "force-dynamic";
-
-export async function POST(req: NextRequest) {
+export async function POST(request: Request) {
   try {
-    const formData = await req.formData();
+    const formData = await request.formData();
+    const files = formData.getAll('images') as File[];
+    const singleFile = formData.get('image') as File | null;
 
-    const files: File[] = [];
-    const imageField = formData.get("image");
-    const fileField = formData.get("file");
-    const imagesField = formData.getAll("images");
+    const toProcess = files.length > 0 ? files : singleFile ? [singleFile] : [];
 
-    if (imageField && imageField instanceof File) {
-      files.push(imageField);
-    }
-    if (fileField && fileField instanceof File) {
-      files.push(fileField);
-    }
-    if (imagesField && imagesField.length > 0) {
-      imagesField.forEach((f) => {
-        if (f instanceof File) files.push(f);
-      });
-    }
-
-    if (files.length === 0) {
+    if (toProcess.length === 0) {
       return NextResponse.json(
-        { success: false, message: "No image file provided for upload." },
+        { success: false, message: 'No files provided' },
         { status: 400 }
       );
     }
 
-    const uploadsDir = path.join(process.cwd(), "public", "uploads");
-    if (!existsSync(uploadsDir)) {
-      await fs.mkdir(uploadsDir, { recursive: true });
-    }
+    const uploadedUrls: string[] = [];
 
-    const uploadedResults = [];
-
-    for (const file of files) {
+    for (const file of toProcess) {
       const bytes = await file.arrayBuffer();
       const buffer = Buffer.from(bytes);
+      const mimeType = file.type || 'image/jpeg';
 
-      const ext = path.extname(file.name).toLowerCase() || ".jpg";
-      const cleanBase = path.basename(file.name, ext).replace(/[^a-zA-Z0-9]/g, "-");
-      const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
-      const filename = `${cleanBase}-${uniqueSuffix}${ext}`;
-      const filePath = path.join(uploadsDir, filename);
-
-      await fs.writeFile(filePath, buffer);
-
-      uploadedResults.push({
-        url: `/uploads/${filename}`,
-        filename,
-        originalName: file.name,
-        size: file.size,
-      });
-    }
-
-    if (uploadedResults.length === 1 && !formData.has("images")) {
-      return NextResponse.json({
-        success: true,
-        message: "Image uploaded successfully.",
-        data: uploadedResults[0],
-      });
+      try {
+        const uploadDir = path.join(process.cwd(), 'public', 'uploads');
+        await mkdir(uploadDir, { recursive: true });
+        const ext = path.extname(file.name) || '.jpg';
+        const filename = `${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`;
+        const filepath = path.join(uploadDir, filename);
+        await writeFile(filepath, buffer);
+        uploadedUrls.push(`/uploads/${filename}`);
+      } catch {
+        // On serverless read-only filesystems (e.g. Vercel), return a Base64 data URL so the image works immediately
+        const base64Data = `data:${mimeType};base64,${buffer.toString('base64')}`;
+        uploadedUrls.push(base64Data);
+      }
     }
 
     return NextResponse.json({
       success: true,
-      message: `${uploadedResults.length} image(s) uploaded successfully.`,
-      data: uploadedResults,
+      message: 'Files uploaded successfully',
+      data: {
+        url: uploadedUrls[0],
+        urls: uploadedUrls,
+      },
     });
-  } catch (err: any) {
+  } catch (error: any) {
     return NextResponse.json(
-      { success: false, message: err.message || "Failed to upload file." },
+      { success: false, message: error.message || 'Upload failed' },
       { status: 500 }
     );
   }

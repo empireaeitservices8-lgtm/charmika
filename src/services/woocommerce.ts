@@ -1,6 +1,4 @@
 import { Product, Category, Coupon } from '@/types';
-import { getStoreProducts, getStoreProductBySlug, getStoreCategories } from '@/lib/store-products';
-import prisma from '@/lib/prisma';
 
 export const MOCK_COUPONS: Coupon[] = [
   { code: 'WELCOME10', discountType: 'percentage', amount: 10, minSpend: 0 },
@@ -10,12 +8,22 @@ export const MOCK_COUPONS: Coupon[] = [
 ];
 
 export class WooCommerceService {
-  // Get All Categories from database
+  // Get All Categories
   static async getCategories(): Promise<Category[]> {
-    return getStoreCategories();
+    if (typeof window === 'undefined') {
+      const { getStoreCategories } = await import('@/lib/store-products');
+      return getStoreCategories();
+    }
+    try {
+      const res = await fetch('/api/categories', { cache: 'no-store' });
+      if (res.ok) return await res.json();
+    } catch (e) {
+      console.error('Failed to fetch categories on client', e);
+    }
+    return [];
   }
 
-  // Get Products with optional filters from database
+  // Get Products with optional filters
   static async getProducts(params?: {
     category?: string;
     search?: string;
@@ -27,12 +35,45 @@ export class WooCommerceService {
     newArrivalsOnly?: boolean;
     sort?: string;
   }): Promise<Product[]> {
-    return getStoreProducts(params);
+    if (typeof window === 'undefined') {
+      const { getStoreProducts } = await import('@/lib/store-products');
+      return getStoreProducts(params);
+    }
+    try {
+      const queryParams = new URLSearchParams();
+      if (params?.search) queryParams.append('search', params.search);
+      if (params?.category && params.category !== 'all') queryParams.append('category', params.category);
+      if (params?.type && params.type !== 'all') queryParams.append('type', params.type);
+      if (params?.rentalOnly) queryParams.append('rentalOnly', 'true');
+      if (params?.combosOnly) queryParams.append('combosOnly', 'true');
+      if (params?.newArrivalsOnly) queryParams.append('newArrivalsOnly', 'true');
+      if (params?.minPrice !== undefined) queryParams.append('minPrice', params.minPrice.toString());
+      if (params?.maxPrice !== undefined) queryParams.append('maxPrice', params.maxPrice.toString());
+      if (params?.sort) queryParams.append('sort', params.sort);
+
+      const res = await fetch('/api/products?' + queryParams.toString(), { cache: 'no-store' });
+      if (res.ok) return await res.json();
+    } catch (e) {
+      console.error('Failed to fetch products on client', e);
+    }
+    return [];
   }
 
-  // Get Single Product by Slug from database
+  // Get Single Product by Slug
   static async getProductBySlug(slug: string): Promise<Product | null> {
-    return getStoreProductBySlug(slug);
+    if (typeof window === 'undefined') {
+      const { getStoreProductBySlug } = await import('@/lib/store-products');
+      return getStoreProductBySlug(slug);
+    }
+    try {
+      const queryParams = new URLSearchParams();
+      queryParams.append('slug', slug);
+      const res = await fetch('/api/product?' + queryParams.toString(), { cache: 'no-store' });
+      if (res.ok) return await res.json();
+    } catch (e) {
+      console.error('Failed to fetch product by slug on client', e);
+    }
+    return null;
   }
 
   // Get Rental Products
@@ -40,7 +81,10 @@ export class WooCommerceService {
     const products = await this.getProducts({ rentalOnly: true });
     if (products.length > 0) return products;
     const all = await this.getProducts();
-    return all.filter((p) => p.isRentalAvailable || p.price >= 6000).slice(0, 8);
+    return all
+      .filter((p) => p.isRentalAvailable || p.price >= 990)
+      .slice(0, 8)
+      .map((p) => ({ ...p, isRentalAvailable: true }));
   }
 
   // Get Combo Offers
@@ -71,49 +115,32 @@ export class WooCommerceService {
     return { valid: true, coupon, message: `Coupon ${coupon.code} applied successfully!` };
   }
 
-  // Create Product in Database
+  // Create Product in Catalog
   static async createProduct(data: any): Promise<Product | null> {
-    try {
-      const created = await prisma.product.create({
-        data: {
-          name: data.name,
-          slug: data.slug || data.name.toLowerCase().replace(/[^a-z0-9]/g, '-'),
-          sku: data.sku || `CH-${Date.now()}`,
-          categoryId: data.categoryId || 1,
-          regularPrice: data.regularPrice || 0,
-          salePrice: data.salePrice || null,
-          stock: data.stock || 0,
-          status: 'ACTIVE',
-        },
-      });
-      return created ? getStoreProductBySlug(created.slug) : null;
-    } catch {
-      return null;
+    if (typeof window === 'undefined') {
+      const { createUnifiedProduct, getStoreProductBySlug } = await import('@/lib/store-products');
+      const created = await createUnifiedProduct(data);
+      return getStoreProductBySlug(created.slug);
     }
+    return null;
   }
 
-  // Update Product in Database
+  // Update Product in Catalog
   static async updateProduct(id: number | string, data: any): Promise<Product | null> {
-    try {
-      const updated = await prisma.product.update({
-        where: { id: Number(id) },
-        data,
-      });
+    if (typeof window === 'undefined') {
+      const { updateUnifiedProduct, getStoreProductBySlug } = await import('@/lib/store-products');
+      const updated = await updateUnifiedProduct(Number(id), data);
       return updated ? getStoreProductBySlug(updated.slug) : null;
-    } catch {
-      return null;
     }
+    return null;
   }
 
-  // Delete Product in Database
+  // Delete Product in Catalog
   static async deleteProduct(id: number | string): Promise<boolean> {
-    try {
-      await prisma.product.delete({
-        where: { id: Number(id) },
-      });
-      return true;
-    } catch {
-      return false;
+    if (typeof window === 'undefined') {
+      const { deleteUnifiedProduct } = await import('@/lib/store-products');
+      return deleteUnifiedProduct(Number(id));
     }
+    return false;
   }
 }

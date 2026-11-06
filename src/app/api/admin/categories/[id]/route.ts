@@ -1,165 +1,98 @@
-import { NextRequest, NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
+import { NextResponse } from 'next/server';
+import { revalidatePath } from 'next/cache';
+import {
+  getUnifiedAdminCategories,
+  updateUnifiedCategory,
+  deleteUnifiedCategory,
+} from '@/lib/store-products';
 
-export const dynamic = "force-dynamic";
-
-function generateSlug(text: string) {
-  return text
-    .toString()
-    .toLowerCase()
-    .trim()
-    .replace(/\s+/g, "-")
-    .replace(/[^\w\-]+/g, "")
-    .replace(/\-\-+/g, "-");
-}
+export const dynamic = 'force-dynamic';
 
 export async function GET(
-  req: NextRequest,
+  _request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id: rawId } = await params;
-    const id = parseInt(rawId, 10);
-    if (isNaN(id)) {
-      return NextResponse.json({ success: false, message: "Invalid category ID." }, { status: 400 });
+    const { id } = await params;
+    const categories = await getUnifiedAdminCategories();
+    const cat = categories.find((c) => c.id === Number(id));
+    if (!cat) {
+      return NextResponse.json(
+        { success: false, message: 'Category not found' },
+        { status: 404 }
+      );
     }
-
-    const category = await prisma.category.findUnique({
-      where: { id },
-      include: {
-        _count: { select: { products: true } },
-      },
-    });
-
-    if (!category) {
-      return NextResponse.json({ success: false, message: "Category not found." }, { status: 404 });
-    }
-
     return NextResponse.json({
       success: true,
-      message: "Category retrieved successfully.",
-      data: {
-        id: category.id,
-        name: category.name,
-        slug: category.slug,
-        description: category.description,
-        image: category.image,
-        status: category.status.toLowerCase(),
-        products: category._count.products,
-      },
+      message: 'Category retrieved',
+      data: cat,
     });
   } catch (err: any) {
     return NextResponse.json(
-      { success: false, message: err.message || "Failed to retrieve category." },
+      { success: false, message: err.message || 'Failed to fetch category' },
       { status: 500 }
     );
   }
 }
 
 export async function PUT(
-  req: NextRequest,
+  request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id: rawId } = await params;
-    const id = parseInt(rawId, 10);
-    if (isNaN(id)) {
-      return NextResponse.json({ success: false, message: "Invalid category ID." }, { status: 400 });
+    const { id } = await params;
+    const body = await request.json();
+    const updated = await updateUnifiedCategory(Number(id), body);
+    if (!updated) {
+      return NextResponse.json(
+        { success: false, message: 'Category not found' },
+        { status: 404 }
+      );
     }
 
-    let { name, slug, description, image, status } = await req.json();
-    if (slug) slug = generateSlug(slug);
-
-    if (name || slug) {
-      const existing = await prisma.category.findFirst({
-        where: {
-          id: { not: id },
-          OR: [...(name ? [{ name }] : []), ...(slug ? [{ slug }] : [])],
-        },
-      });
-
-      if (existing) {
-        return NextResponse.json(
-          { success: false, message: "Another category already exists with this name or slug." },
-          { status: 400 }
-        );
-      }
+    try {
+      revalidatePath('/', 'layout');
+      revalidatePath('/shop');
+    } catch {
+      // ignore revalidate errors
     }
-
-    const updated = await prisma.category.update({
-      where: { id },
-      data: {
-        ...(name && { name }),
-        ...(slug && { slug }),
-        ...(description !== undefined && { description }),
-        ...(image !== undefined && { image }),
-        ...(status && { status: status.toUpperCase() }),
-      },
-      include: {
-        _count: { select: { products: true } },
-      },
-    });
 
     return NextResponse.json({
       success: true,
-      message: "Category updated successfully.",
-      data: {
-        ...updated,
-        status: updated.status.toLowerCase(),
-        products: updated._count.products,
-      },
+      message: 'Category updated successfully',
+      data: updated,
     });
-  } catch (err: any) {
+  } catch (error: any) {
     return NextResponse.json(
-      { success: false, message: err.message || "Failed to update category." },
+      { success: false, message: error.message || 'Failed to update category' },
       { status: 500 }
     );
   }
 }
 
 export async function DELETE(
-  req: NextRequest,
+  _request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id: rawId } = await params;
-    const id = parseInt(rawId, 10);
-    if (isNaN(id)) {
-      return NextResponse.json({ success: false, message: "Invalid category ID." }, { status: 400 });
+    const { id } = await params;
+    await deleteUnifiedCategory(Number(id));
+
+    try {
+      revalidatePath('/', 'layout');
+      revalidatePath('/shop');
+    } catch {
+      // ignore revalidate errors
     }
-
-    const category = await prisma.category.findUnique({
-      where: { id },
-      include: {
-        _count: { select: { products: true } },
-      },
-    });
-
-    if (!category) {
-      return NextResponse.json({ success: false, message: "Category not found." }, { status: 404 });
-    }
-
-    if (category._count.products > 0) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: `Cannot delete '${category.name}' because it contains ${category._count.products} product(s). Please move or remove the products first.`,
-        },
-        { status: 400 }
-      );
-    }
-
-    await prisma.category.delete({
-      where: { id },
-    });
 
     return NextResponse.json({
       success: true,
-      message: `Category '${category.name}' deleted successfully.`,
+      message: 'Category deleted successfully',
+      data: null,
     });
-  } catch (err: any) {
+  } catch (error: any) {
     return NextResponse.json(
-      { success: false, message: err.message || "Failed to delete category." },
+      { success: false, message: error.message || 'Failed to delete category' },
       { status: 500 }
     );
   }

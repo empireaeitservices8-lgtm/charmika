@@ -32,7 +32,7 @@ export const CategoryGrid = async () => {
               className="group relative rounded-2xl overflow-hidden aspect-[4/5] shadow-xs hover:shadow-luxury transition-all duration-500 border border-gold/20"
             >
               <img
-                src={cat.image || '/images/long-haarams.png'}
+                src={cat.image || 'https://paleturquoise-weasel-278625.hostingersite.com/wp-content/uploads/2026/10/file_00000000aeb88230a6116622d5b66a95.png'}
                 alt={cat.name}
                 className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700 brightness-95"
               />

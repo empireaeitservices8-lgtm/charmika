@@ -11,3 +11,4 @@ export async function POST() {
   clearAdminAuthCookie(response);
   return response;
 }
+

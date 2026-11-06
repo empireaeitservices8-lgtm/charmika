@@ -6,6 +6,8 @@ import { RentalSpotlight } from '@/components/home/RentalSpotlight';
 import { ComboOffersSection } from '@/components/home/ComboOffersSection';
 import { CustomerReviews } from '@/components/home/CustomerReviews';
 
+export const dynamic = 'force-dynamic';
+
 export default function HomePage() {
   return (
     <>

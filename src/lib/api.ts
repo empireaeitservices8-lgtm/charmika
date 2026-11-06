@@ -52,7 +52,7 @@ export async function apiRequest<T = any>(
       if (response.status === 401 && typeof window !== "undefined") {
         const isAuthPage = window.location.pathname.includes("/login");
         if (!isAuthPage) {
-          window.location.href = "/login";
+          window.location.href = "/admin/login";
         }
       }
 

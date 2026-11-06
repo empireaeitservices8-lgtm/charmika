@@ -4,6 +4,8 @@ import { WooCommerceService } from '@/services/woocommerce';
 import { RentalProductCard } from '@/components/product/RentalProductCard';
 import { Clock, ShieldCheck, RefreshCw, Sparkles, HelpCircle, CheckCircle2 } from 'lucide-react';
 
+export const dynamic = 'force-dynamic';
+
 export default async function RentalPage() {
   const rentalProducts = await WooCommerceService.getRentalProducts();
 

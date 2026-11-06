@@ -1,126 +1,51 @@
-import { NextRequest, NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
-import { categories as mockDataCategories } from "@/lib/mockData";
+import { NextResponse } from 'next/server';
+import { revalidatePath } from 'next/cache';
+import {
+  getUnifiedAdminCategories,
+  createUnifiedCategory,
+} from '@/lib/store-products';
 
-export const dynamic = "force-dynamic";
-
-function generateSlug(text: string) {
-  return text
-    .toString()
-    .toLowerCase()
-    .trim()
-    .replace(/\s+/g, "-")
-    .replace(/[^\w\-]+/g, "")
-    .replace(/\-\-+/g, "-");
-}
+export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
-    const list = await prisma.category.findMany({
-      include: {
-        _count: {
-          select: { products: true },
-        },
-      },
-      orderBy: { id: "asc" },
-    });
-
-    const formatted = list.map((c) => ({
-      id: c.id,
-      name: c.name,
-      slug: c.slug,
-      description: c.description,
-      image: c.image,
-      status: (c.status || "ACTIVE").toLowerCase(),
-      products: c._count.products,
-      createdAt: c.createdAt,
-    }));
-
+    const categories = await getUnifiedAdminCategories();
     return NextResponse.json({
       success: true,
-      message: "Categories retrieved successfully.",
-      data: formatted,
+      message: 'Categories retrieved successfully',
+      data: categories,
     });
   } catch (err: any) {
-    console.warn("Failed to retrieve categories from database, falling back to mockData:", err);
-    const formatted = mockDataCategories.map((c) => ({
-      id: c.id,
-      name: c.name,
-      slug: c.slug,
-      description: c.description,
-      image:
-        c.slug === "chokers"
-          ? "/images/chokers.png"
-          : c.slug === "haarams"
-          ? "/images/long-haarams.png"
-          : "/images/temple-jewellery.png",
-      status: c.status,
-      products: c.products,
-      createdAt: new Date().toISOString(),
-    }));
-
-    return NextResponse.json({
-      success: true,
-      message: "Categories retrieved successfully.",
-      data: formatted,
-    });
+    return NextResponse.json(
+      { success: false, message: err.message || 'Failed to fetch categories' },
+      { status: 500 }
+    );
   }
 }
 
-export async function POST(req: NextRequest) {
+export async function POST(request: Request) {
   try {
-    let { name, slug, description, image, status } = await req.json();
-    if (!name) {
-      return NextResponse.json(
-        { success: false, message: "Category name is required." },
-        { status: 400 }
-      );
+    const body = await request.json();
+    const created = await createUnifiedCategory(body);
+
+    try {
+      revalidatePath('/', 'layout');
+      revalidatePath('/shop');
+    } catch {
+      // ignore revalidate errors
     }
-
-    if (!slug) {
-      slug = generateSlug(name);
-    } else {
-      slug = generateSlug(slug);
-    }
-
-    const existing = await prisma.category.findFirst({
-      where: {
-        OR: [{ name }, { slug }],
-      },
-    });
-
-    if (existing) {
-      return NextResponse.json(
-        { success: false, message: "A category with this name or slug already exists." },
-        { status: 400 }
-      );
-    }
-
-    const category = await prisma.category.create({
-      data: {
-        name,
-        slug,
-        description: description || null,
-        image: image || null,
-        status: (status || "ACTIVE").toUpperCase() as any,
-      },
-    });
 
     return NextResponse.json(
       {
         success: true,
-        message: "Category created successfully.",
-        data: {
-          ...category,
-          status: category.status.toLowerCase(),
-          products: 0,
-        },
+        message: 'Category created successfully',
+        data: created,
       },
       { status: 201 }
     );
-  } catch (err: any) {
+  } catch (error: any) {
     return NextResponse.json(
-      { success: false, message: err.message || "Failed to create category." },
+      { success: false, message: error.message || 'Failed to create category' },
       { status: 500 }
     );
   }
