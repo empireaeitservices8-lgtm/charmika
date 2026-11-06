@@ -786,3 +786,347 @@ export async function getStoreProductBySlug(slug: string): Promise<Product | nul
   const all = await getStoreProducts();
   return all.find((p) => p.slug === slug || String(p.id) === slug) || null;
 }
+
+
+export type UnifiedOrderItem = {
+  id: number;
+  productId: number;
+  productName: string;
+  sku: string;
+  variant: string;
+  jewelleryType: string;
+  productImage: string | null;
+  quantity: number;
+  unitPrice: number;
+  subtotal: number;
+  currentStock: number | null;
+};
+
+export type UnifiedOrder = {
+  id: number;
+  orderNumber: string;
+  customerId: number;
+  customerName: string;
+  customerEmail: string;
+  customerPhone: string;
+  customerStatus: string;
+  subtotal: number;
+  deliveryCharge: number;
+  tax: number;
+  discount: number;
+  totalAmount: number;
+  paymentMethod: string;
+  paymentStatus: string;
+  orderStatus: string;
+  stockDeducted: boolean;
+  shippingAddress: string;
+  billingAddress: string;
+  customerNotes: string;
+  couponCode: string | null;
+  transactionId: string | null;
+  itemsCount: number;
+  items: UnifiedOrderItem[];
+  statusHistory: {
+    id: number;
+    prevStatus: string | null;
+    newStatus: string;
+    comment: string;
+    updatedBy: string;
+    date: string;
+  }[];
+  createdAt: string;
+  formattedDate: string;
+  updatedAt: string;
+  formattedUpdatedAt: string;
+};
+
+const globalForOrders = globalThis as unknown as {
+  __charmikaOrders?: Map<number, UnifiedOrder>;
+  __charmikaNextOrderId?: number;
+};
+
+function getRuntimeOrders(): Map<number, UnifiedOrder> {
+  if (!globalForOrders.__charmikaOrders) {
+    globalForOrders.__charmikaOrders = new Map<number, UnifiedOrder>();
+    globalForOrders.__charmikaNextOrderId = 1001;
+  }
+  return globalForOrders.__charmikaOrders;
+}
+
+function formatDateTime(d: Date | string) {
+  return new Intl.DateTimeFormat('en-GB', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(d));
+}
+
+export async function createUnifiedOrder(body: any): Promise<UnifiedOrder> {
+  const ordersMap = getRuntimeOrders();
+  const allProducts = await getUnifiedAdminProducts();
+  const billing = body.billing || {};
+  const shipping = body.shipping || billing;
+  const lineItems = Array.isArray(body.line_items) ? body.line_items : [];
+
+  const items: UnifiedOrderItem[] = lineItems.map((li: any, idx: number) => {
+    const prod = allProducts.find((p) => p.id === Number(li.productId));
+    const unitPrice = prod ? Number(prod.salePrice ?? prod.regularPrice) : Number(li.price || 499);
+    const qty = Math.max(1, Number(li.quantity) || 1);
+    return {
+      id: idx + 1,
+      productId: Number(li.productId) || (prod ? prod.id : 1),
+      productName: prod?.name || li.name || 'Charmika Jewellery Piece',
+      sku: prod?.sku || `CH-${li.productId || idx + 1}`,
+      variant: li.isRental ? `Rental (${li.rentalDurationDays || 3} Days)` : 'Standard Size',
+      jewelleryType: prod?.jewelleryType || 'Gold Plated',
+      productImage: prod?.primaryImage || prod?.images?.[0]?.url || DEFAULT_WP_PRODUCT_IMG,
+      quantity: qty,
+      unitPrice,
+      subtotal: unitPrice * qty,
+      currentStock: prod?.stock ?? 10,
+    };
+  });
+
+  const subtotal = items.reduce((sum, i) => sum + i.subtotal, 0);
+  const deliveryCharge = Number(body.shipping_total ?? (subtotal >= 2000 ? 0 : 80));
+  const discount = Number(body.discount ?? 0);
+  const totalAmount = Math.max(1, subtotal + deliveryCharge - discount);
+
+  let orderId = (globalForOrders.__charmikaNextOrderId = (globalForOrders.__charmikaNextOrderId || 1000) + 1);
+  let orderNumber = `ORD-${orderId}`;
+  let customerId = orderId;
+
+  const customerName = `${billing.firstName || ''} ${billing.lastName || ''}`.trim() || 'Guest Customer';
+  const customerEmail = (billing.email || 'guest@charmika.com').trim();
+  const customerPhone = (billing.phone || '').trim();
+  const fullShippingAddr = [
+    shipping.addressLine1,
+    shipping.addressLine2,
+    shipping.city,
+    shipping.state,
+    shipping.pincode,
+    shipping.country || 'India',
+  ]
+    .filter(Boolean)
+    .join(', ');
+
+  try {
+    let dbCustomer = await prisma.customer.findUnique({ where: { email: customerEmail } });
+    if (!dbCustomer) {
+      dbCustomer = await prisma.customer.create({
+        data: {
+          name: customerName,
+          email: customerEmail,
+          phone: customerPhone,
+          status: 'active',
+          address: shipping.addressLine1 || '',
+          city: shipping.city || '',
+          state: shipping.state || '',
+          postalCode: shipping.pincode || '',
+        },
+      });
+    }
+    customerId = dbCustomer.id;
+
+    const dbOrder = await prisma.order.create({
+      data: {
+        orderNumber: `ORD-${Date.now().toString().slice(-6)}`,
+        customerId: dbCustomer.id,
+        subtotal,
+        deliveryCharge,
+        tax: 0,
+        discount,
+        totalAmount,
+        paymentMethod: body.payment_method || 'payu',
+        paymentStatus: 'pending',
+        orderStatus: 'pending',
+        shippingAddress: fullShippingAddr,
+        billingAddress: fullShippingAddr,
+        customerNotes: body.customer_note || '',
+        items: {
+          create: items.map((item) => ({
+            productId: item.productId,
+            productName: item.productName,
+            sku: item.sku,
+            variant: item.variant,
+            jewelleryType: item.jewelleryType,
+            productImage: item.productImage,
+            quantity: item.quantity,
+            unitPrice: item.unitPrice,
+            subtotal: item.subtotal,
+          })),
+        },
+      },
+    });
+    orderId = dbOrder.id;
+    orderNumber = dbOrder.orderNumber;
+  } catch {
+    // Fallback to runtime store when DB is not connected
+  }
+
+  const nowIso = new Date().toISOString();
+  const newOrder: UnifiedOrder = {
+    id: orderId,
+    orderNumber,
+    customerId,
+    customerName,
+    customerEmail,
+    customerPhone,
+    customerStatus: 'active',
+    subtotal,
+    deliveryCharge,
+    tax: 0,
+    discount,
+    totalAmount,
+    paymentMethod: body.payment_method || 'payu',
+    paymentStatus: 'pending',
+    orderStatus: 'pending',
+    stockDeducted: false,
+    shippingAddress: fullShippingAddr,
+    billingAddress: fullShippingAddr,
+    customerNotes: body.customer_note || '',
+    couponCode: null,
+    transactionId: null,
+    itemsCount: items.reduce((s, i) => s + i.quantity, 0),
+    items,
+    statusHistory: [
+      {
+        id: 1,
+        prevStatus: null,
+        newStatus: 'pending',
+        comment: 'Order created at checkout',
+        updatedBy: 'System',
+        date: formatDateTime(nowIso),
+      },
+    ],
+    createdAt: nowIso,
+    formattedDate: formatDateTime(nowIso),
+    updatedAt: nowIso,
+    formattedUpdatedAt: formatDateTime(nowIso),
+  };
+
+  ordersMap.set(orderId, newOrder);
+  return newOrder;
+}
+
+export async function updateUnifiedOrderStatus(
+  id: number,
+  updates: { orderStatus?: string; paymentStatus?: string; transactionId?: string; comment?: string }
+): Promise<UnifiedOrder | null> {
+  const ordersMap = getRuntimeOrders();
+  const existing = ordersMap.get(id);
+
+  if (existing) {
+    const prevStatus = existing.orderStatus;
+    const newStatus = updates.orderStatus || existing.orderStatus;
+    const nowIso = new Date().toISOString();
+    const updated: UnifiedOrder = {
+      ...existing,
+      orderStatus: newStatus,
+      paymentStatus: updates.paymentStatus || existing.paymentStatus,
+      transactionId: updates.transactionId || existing.transactionId,
+      updatedAt: nowIso,
+      formattedUpdatedAt: formatDateTime(nowIso),
+      statusHistory: [
+        {
+          id: existing.statusHistory.length + 1,
+          prevStatus,
+          newStatus,
+          comment: updates.comment || `Order status updated to ${newStatus}`,
+          updatedBy: 'Admin',
+          date: formatDateTime(nowIso),
+        },
+        ...existing.statusHistory,
+      ],
+    };
+    ordersMap.set(id, updated);
+  }
+
+  try {
+    await prisma.order.update({
+      where: { id },
+      data: {
+        ...(updates.orderStatus ? { orderStatus: updates.orderStatus } : {}),
+        ...(updates.paymentStatus ? { paymentStatus: updates.paymentStatus } : {}),
+        ...(updates.transactionId ? { transactionId: updates.transactionId } : {}),
+      },
+    });
+  } catch {
+    // Ignore when DB is not connected
+  }
+
+  return ordersMap.get(id) || null;
+}
+
+export async function getUnifiedOrders(): Promise<UnifiedOrder[]> {
+  const ordersMap = getRuntimeOrders();
+
+  try {
+    const dbOrders = await prisma.order.findMany({
+      include: {
+        customer: true,
+        items: true,
+        statusHistory: { orderBy: { createdAt: 'desc' } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    for (const o of dbOrders) {
+      ordersMap.set(o.id, {
+        id: o.id,
+        orderNumber: o.orderNumber,
+        customerId: o.customerId,
+        customerName: o.customer?.name || 'Customer',
+        customerEmail: o.customer?.email || '',
+        customerPhone: o.customer?.phone || '',
+        customerStatus: o.customer?.status || 'active',
+        subtotal: Number(o.subtotal),
+        deliveryCharge: Number(o.deliveryCharge),
+        tax: Number(o.tax),
+        discount: Number(o.discount),
+        totalAmount: Number(o.totalAmount),
+        paymentMethod: o.paymentMethod,
+        paymentStatus: o.paymentStatus,
+        orderStatus: o.orderStatus,
+        stockDeducted: o.stockDeducted,
+        shippingAddress: o.shippingAddress || '',
+        billingAddress: o.billingAddress || o.shippingAddress || '',
+        customerNotes: o.customerNotes || '',
+        couponCode: o.couponCode || null,
+        transactionId: o.transactionId || null,
+        itemsCount: o.items ? o.items.reduce((acc, i) => acc + i.quantity, 0) : 0,
+        items: (o.items || []).map((i) => ({
+          id: i.id,
+          productId: i.productId,
+          productName: i.productName || 'Product',
+          sku: i.sku || '',
+          variant: i.variant || 'Standard Size',
+          jewelleryType: i.jewelleryType || 'Jewellery',
+          productImage: i.productImage || DEFAULT_WP_PRODUCT_IMG,
+          quantity: i.quantity,
+          unitPrice: Number(i.unitPrice),
+          subtotal: Number(i.subtotal),
+          currentStock: 10,
+        })),
+        statusHistory: (o.statusHistory || []).map((h) => ({
+          id: h.id,
+          prevStatus: h.prevStatus,
+          newStatus: h.newStatus,
+          comment: h.comment || '',
+          updatedBy: h.updatedBy || 'Admin',
+          date: formatDateTime(h.createdAt),
+        })),
+        createdAt: o.createdAt.toISOString(),
+        formattedDate: formatDateTime(o.createdAt),
+        updatedAt: o.updatedAt.toISOString(),
+        formattedUpdatedAt: formatDateTime(o.updatedAt),
+      });
+    }
+  } catch {
+    // Database not connected; use runtime orders map
+  }
+
+  return Array.from(ordersMap.values()).sort((a, b) => b.id - a.id);
+}

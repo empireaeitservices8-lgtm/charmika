@@ -74,7 +74,7 @@ function OrderSuccessContent() {
         </p>
         {orderId && (
           <p className="flex justify-between border-b border-gold/10 pb-1.5 font-mono text-[11px]">
-            <strong>WooCommerce Order ID:</strong>
+            <strong>Order ID:</strong>
             <span className="text-maroon font-bold">#{orderId}</span>
           </p>
         )}

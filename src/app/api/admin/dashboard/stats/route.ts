@@ -1,65 +1,38 @@
 import { NextResponse } from 'next/server';
-import prisma from '@/lib/prisma';
 import {
   getUnifiedAdminProducts,
   getUnifiedAdminCategories,
+  getUnifiedOrders,
 } from '@/lib/store-products';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
-  const [products, categories] = await Promise.all([
+  const [products, categories, orders] = await Promise.all([
     getUnifiedAdminProducts(),
     getUnifiedAdminCategories(),
+    getUnifiedOrders(),
   ]);
 
-  let totalOrders = 0;
-  let totalCustomers = 0;
-  let totalRevenue = 0;
-  let recentOrders: any[] = [];
+  const totalOrders = orders.length;
+  const uniqueCustomers = new Set(orders.map((o) => o.customerEmail).filter(Boolean));
+  const totalCustomers = uniqueCustomers.size;
+  const totalRevenue = orders
+    .filter((o) => o.orderStatus.toLowerCase() !== 'cancelled')
+    .reduce((sum, o) => sum + Number(o.totalAmount || 0), 0);
 
-  try {
-    const [ordersCount, customersCount, orders] = await Promise.all([
-      prisma.order.count(),
-      prisma.customer.count(),
-      prisma.order.findMany({
-        include: { customer: true, items: true },
-        orderBy: { createdAt: 'desc' },
-        take: 10,
-      }),
-    ]);
-
-    totalOrders = ordersCount;
-    totalCustomers = customersCount;
-
-    const allValidOrders = await prisma.order.findMany({
-      where: { orderStatus: { notIn: ['CANCELLED', 'REFUNDED'] } },
-      select: { totalAmount: true },
-    });
-    totalRevenue = allValidOrders.reduce(
-      (sum, o) => sum + Number(o.totalAmount || 0),
-      0
-    );
-
-    recentOrders = orders.map((o) => ({
-      id: o.id,
-      orderNumber: o.orderNumber,
-      customer: o.customer?.name || 'Guest',
-      email: o.customer?.email || '',
-      phone: o.customer?.phone || '',
-      items: o.items.length,
-      total: Number(o.totalAmount),
-      payment: o.paymentStatus.toLowerCase(),
-      status: o.orderStatus.toLowerCase(),
-      date: new Date(o.createdAt).toLocaleDateString('en-GB', {
-        day: '2-digit',
-        month: 'short',
-        year: 'numeric',
-      }),
-    }));
-  } catch {
-    // Database not yet reachable for orders/customers
-  }
+  const recentOrders = orders.slice(0, 10).map((o) => ({
+    id: o.id,
+    orderNumber: o.orderNumber,
+    customer: o.customerName,
+    email: o.customerEmail,
+    phone: o.customerPhone,
+    items: o.itemsCount,
+    total: o.totalAmount,
+    payment: o.paymentStatus.toLowerCase(),
+    status: o.orderStatus.toLowerCase(),
+    date: o.formattedDate,
+  }));
 
   const activePublic = products.filter((p) => p.status === 'active').length;
   const inactive = products.filter((p) => p.status !== 'active').length;
