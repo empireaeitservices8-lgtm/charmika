@@ -83,17 +83,16 @@ export default function Header({ onMenuClick }: { onMenuClick: () => void }) {
         </button>
 
         <div>
-          <div className="flex items-center gap-1 text-[11px] text-charcoal/50">
+          <div className="flex items-center gap-1 text-xs text-charcoal/60">
             {crumbs.map((crumb, i) => (
               <span key={crumb + i} className="flex items-center gap-1">
-                {i > 0 && <ChevronRight className="h-3 w-3" />}
+                {i > 0 && <ChevronRight className="h-3.5 w-3.5" />}
                 <span className={i === crumbs.length - 1 ? "font-semibold text-maroon" : ""}>
                   {crumb}
                 </span>
               </span>
             ))}
           </div>
-          <h2 className="font-serif text-lg font-bold leading-tight text-maroon">{title}</h2>
         </div>
       </div>
 

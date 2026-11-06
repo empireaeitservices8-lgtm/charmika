@@ -19,7 +19,7 @@ interface StoreShellProps {
 
 export function StoreShell({ children, categories, combos }: StoreShellProps) {
   const pathname = usePathname();
-  const isAdmin = pathname?.startsWith('/admin');
+  const isAdmin = pathname?.startsWith('/admin') || pathname === '/login';
 
   if (isAdmin) {
     return <main className="min-h-screen bg-beige">{children}</main>;
