@@ -51,6 +51,22 @@ export type UnifiedOrder = {
   transactionId: string | null;
   itemsCount: number;
   items: UnifiedOrderItem[];
+  shippingDetails?: {
+    firstName?: string;
+    lastName?: string;
+    addressLine1?: string;
+    addressLine2?: string;
+    city?: string;
+    state?: string;
+    pincode?: string;
+    country?: string;
+    phone?: string;
+    email?: string;
+  };
+  shiprocketOrderId?: number | string | null;
+  shiprocketShipmentId?: number | string | null;
+  awbCode?: string | null;
+  courierName?: string | null;
   statusHistory: {
     id: number;
     prevStatus: string | null;
@@ -758,6 +774,22 @@ export async function createUnifiedOrder(body: any): Promise<UnifiedOrder> {
     customerNotes: body.customer_note || '',
     couponCode: null,
     transactionId: null,
+    shippingDetails: {
+      firstName: shipping.firstName || billing.firstName || '',
+      lastName: shipping.lastName || billing.lastName || '',
+      addressLine1: shipping.addressLine1 || billing.addressLine1 || '',
+      addressLine2: shipping.addressLine2 || billing.addressLine2 || '',
+      city: shipping.city || billing.city || '',
+      state: shipping.state || billing.state || '',
+      pincode: shipping.pincode || billing.pincode || '',
+      country: shipping.country || 'India',
+      phone: shipping.phone || billing.phone || '',
+      email: billing.email || '',
+    },
+    shiprocketOrderId: null,
+    shiprocketShipmentId: null,
+    awbCode: null,
+    courierName: null,
     itemsCount: items.reduce((s, i) => s + i.quantity, 0),
     items,
     statusHistory: [
@@ -792,6 +824,10 @@ export async function updateUnifiedOrderStatus(
     paymentStatus?: string;
     transactionId?: string;
     comment?: string;
+    shiprocketOrderId?: number | string | null;
+    shipmentId?: number | string | null;
+    awbCode?: string | null;
+    courierName?: string | null;
   }
 ): Promise<UnifiedOrder | null> {
   const delta = await readCloudDelta();
@@ -806,6 +842,10 @@ export async function updateUnifiedOrderStatus(
     orderStatus: newStatus,
     paymentStatus: updates.paymentStatus || existing.paymentStatus,
     transactionId: updates.transactionId || existing.transactionId,
+    shiprocketOrderId: updates.shiprocketOrderId !== undefined ? updates.shiprocketOrderId : existing.shiprocketOrderId,
+    shiprocketShipmentId: updates.shipmentId !== undefined ? updates.shipmentId : existing.shiprocketShipmentId,
+    awbCode: updates.awbCode !== undefined ? updates.awbCode : existing.awbCode,
+    courierName: updates.courierName !== undefined ? updates.courierName : existing.courierName,
     updatedAt: nowIso,
     formattedUpdatedAt: formatDateTime(nowIso),
     statusHistory: [
@@ -828,6 +868,12 @@ export async function updateUnifiedOrderStatus(
   await writeCloudDelta(delta);
 
   return updated;
+}
+
+export async function getUnifiedOrderById(id: number): Promise<UnifiedOrder | null> {
+  const delta = await readCloudDelta();
+  const existing = (delta.upsertedOrders || {})[id] as UnifiedOrder | undefined;
+  return existing || null;
 }
 
 export async function getUnifiedOrders(): Promise<UnifiedOrder[]> {

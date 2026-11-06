@@ -91,10 +91,12 @@ export async function GET(request: Request) {
           total: String(item.subtotal),
         })),
         shipping: {
-          carrier: 'Shiprocket Express',
-          awb: null,
-          shiprocketOrderId: null,
-          trackingUrl: null,
+          carrier: matched.courierName || 'Shiprocket Express',
+          awb: matched.awbCode || null,
+          shiprocketOrderId: matched.shiprocketOrderId || null,
+          trackingUrl: matched.awbCode
+            ? `https://shiprocket.co/tracking/${matched.awbCode}`
+            : null,
         },
       },
     });
