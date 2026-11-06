@@ -12,15 +12,15 @@ export default function CheckoutPage() {
   const { user } = useAuth();
 
   const [formData, setFormData] = useState({
-    firstName: user?.address?.firstName || 'Lekshmi',
-    lastName: user?.address?.lastName || 'DS',
-    phone: user?.address?.phone || '+91 94009 76257',
-    email: user?.email || 'charmikajewel@gmail.com',
-    addressLine1: user?.address?.addressLine1 || 'Karthika, Kuttypady',
-    addressLine2: user?.address?.addressLine2 || 'Gandhinagar PO',
-    city: user?.address?.city || 'Kottayam',
-    state: user?.address?.state || 'Kerala',
-    pincode: user?.address?.pincode || '686008',
+    firstName: '',
+    lastName: '',
+    phone: '',
+    email: '',
+    addressLine1: '',
+    addressLine2: '',
+    city: '',
+    state: '',
+    pincode: '',
     country: 'India',
   });
 
@@ -195,8 +195,9 @@ export default function CheckoutPage() {
                     type="text"
                     value={formData.firstName}
                     onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
+                    placeholder="Enter first name"
                     required
-                    className="w-full px-3 py-2 border border-gold/30 rounded-xl text-xs focus:outline-none focus:border-gold"
+                    className="w-full px-3 py-2 border border-gold/30 rounded-xl text-xs focus:outline-none focus:border-gold placeholder:text-charcoal/40"
                   />
                 </div>
                 <div>
@@ -205,8 +206,9 @@ export default function CheckoutPage() {
                     type="text"
                     value={formData.lastName}
                     onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
+                    placeholder="Enter last name"
                     required
-                    className="w-full px-3 py-2 border border-gold/30 rounded-xl text-xs focus:outline-none focus:border-gold"
+                    className="w-full px-3 py-2 border border-gold/30 rounded-xl text-xs focus:outline-none focus:border-gold placeholder:text-charcoal/40"
                   />
                 </div>
               </div>
@@ -218,8 +220,9 @@ export default function CheckoutPage() {
                     type="tel"
                     value={formData.phone}
                     onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                    placeholder="10-digit mobile number"
                     required
-                    className="w-full px-3 py-2 border border-gold/30 rounded-xl text-xs focus:outline-none focus:border-gold"
+                    className="w-full px-3 py-2 border border-gold/30 rounded-xl text-xs focus:outline-none focus:border-gold placeholder:text-charcoal/40"
                   />
                 </div>
                 <div>
@@ -228,8 +231,9 @@ export default function CheckoutPage() {
                     type="email"
                     value={formData.email}
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                    placeholder="name@example.com"
                     required
-                    className="w-full px-3 py-2 border border-gold/30 rounded-xl text-xs focus:outline-none focus:border-gold"
+                    className="w-full px-3 py-2 border border-gold/30 rounded-xl text-xs focus:outline-none focus:border-gold placeholder:text-charcoal/40"
                   />
                 </div>
               </div>
@@ -240,8 +244,9 @@ export default function CheckoutPage() {
                   type="text"
                   value={formData.addressLine1}
                   onChange={(e) => setFormData({ ...formData, addressLine1: e.target.value })}
+                  placeholder="House number, flat, building name, street"
                   required
-                  className="w-full px-3 py-2 border border-gold/30 rounded-xl text-xs focus:outline-none focus:border-gold"
+                  className="w-full px-3 py-2 border border-gold/30 rounded-xl text-xs focus:outline-none focus:border-gold placeholder:text-charcoal/40"
                 />
               </div>
 
@@ -252,8 +257,9 @@ export default function CheckoutPage() {
                     type="text"
                     value={formData.city}
                     onChange={(e) => setFormData({ ...formData, city: e.target.value })}
+                    placeholder="City / Town"
                     required
-                    className="w-full px-3 py-2 border border-gold/30 rounded-xl text-xs focus:outline-none focus:border-gold"
+                    className="w-full px-3 py-2 border border-gold/30 rounded-xl text-xs focus:outline-none focus:border-gold placeholder:text-charcoal/40"
                   />
                 </div>
                 <div>
@@ -262,8 +268,9 @@ export default function CheckoutPage() {
                     type="text"
                     value={formData.state}
                     onChange={(e) => setFormData({ ...formData, state: e.target.value })}
+                    placeholder="State"
                     required
-                    className="w-full px-3 py-2 border border-gold/30 rounded-xl text-xs focus:outline-none focus:border-gold"
+                    className="w-full px-3 py-2 border border-gold/30 rounded-xl text-xs focus:outline-none focus:border-gold placeholder:text-charcoal/40"
                   />
                 </div>
                 <div>
@@ -272,8 +279,9 @@ export default function CheckoutPage() {
                     type="text"
                     value={formData.pincode}
                     onChange={(e) => setFormData({ ...formData, pincode: e.target.value })}
+                    placeholder="6-digit PIN"
                     required
-                    className="w-full px-3 py-2 border border-gold/30 rounded-xl text-xs focus:outline-none focus:border-gold"
+                    className="w-full px-3 py-2 border border-gold/30 rounded-xl text-xs focus:outline-none focus:border-gold placeholder:text-charcoal/40"
                   />
                 </div>
               </div>

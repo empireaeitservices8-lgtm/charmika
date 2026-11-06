@@ -47,18 +47,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       id: 'usr_' + Date.now(),
       email,
       name: name || email.split('@')[0],
-      phone: '+91 98470 12345',
-      address: {
-        firstName: name || 'Lekshmi',
-        lastName: 'DS',
-        phone: '+91 94009 76257',
-        addressLine1: 'Karthika, Kuttypady',
-        addressLine2: 'Gandhinagar PO',
-        city: 'Kottayam',
-        state: 'Kerala',
-        pincode: '686008',
-        country: 'India',
-      },
+      phone: '',
     };
     setUser(newUser);
     setIsAuthModalOpen(false);
